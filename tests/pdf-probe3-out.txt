@@ -1,0 +1,24 @@
+
+
+=== P1: file:// 顶层 ===
+  frames: []
+  downloads: []
+  => viewer: NO
+
+=== P2: nimbus-doc:// 顶层 ===
+  frames: []
+  downloads: []
+  => viewer: NO
+
+=== P3: file:// iframe ===
+  frames: [""]
+  downloads: []
+  => viewer: NO
+
+=== P4: nimbus-doc:// iframe ===
+  frames: ["nimbus-doc://nimbus-doc-test.pdf/"]
+  downloads: []
+  => viewer: NO
+
+================ 汇总 ================
+P1(file顶层): false P2(custom顶层): false P3(file iframe): false P4(custom iframe): false
