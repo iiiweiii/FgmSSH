@@ -1,9 +1,0 @@
-
-=== iframe 加载后 mainFrame.frames ===
-  [0] nimbus-doc://nimbus-doc-test.pdf/
-=== 检测结果 ===
-  body 标记: loading
-  hasDocFrame   : true
-  hasPdfViewerFrame: false
-
-结论: 方案 A 不可行 ❌ — 需回退方案 B (pdfjs-dist)

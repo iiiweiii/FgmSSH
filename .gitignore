@@ -30,3 +30,8 @@ module-hits.txt
 smoke-*.js
 smoke-*.cjs
 /*.png
+# 私钥/凭据防护
+tests/hostkey*
+*.pem
+*.key
+!tests/hostkey-test*.js
