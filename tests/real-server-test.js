@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 真实服务器连接测试
+ * FgmSSH 真实服务器连接测试
  * 复用 src/main.js 中 createSSHSession() 完全相同的 ssh2 调用方式:
  * - Client + password 认证
  * - conn.shell({ term, rows, cols }) 打开 PTY
@@ -59,7 +59,7 @@ const conn = new Client();
 conn.on('ready', () => {
   log('✅ SSH 连接建立 (ready) — 密码认证通过');
   log(`   主机: ${CONFIG.host}:${CONFIG.port} 用户: ${CONFIG.username}`);
-  log('   打开 PTY shell 会话 (与 NimbusSSH main.js 相同调用方式)...');
+  log('   打开 PTY shell 会话 (与 FgmSSH main.js 相同调用方式)...');
 
   conn.shell({
     term: process.env.TERM || 'xterm-256color',
@@ -140,7 +140,7 @@ function finish() {
   log('\n============================================');
   log(`测试结果: ✅ 通过 ${passCount} 项 | ❌ 失败 ${failCount} 项`);
   if (failCount === 0 && passCount > 0) {
-    log('🎉 NimbusSSH SSH 连接链路 (认证/PTY/命令交互) 在真实服务器上验证通过!');
+    log('🎉 FgmSSH SSH 连接链路 (认证/PTY/命令交互) 在真实服务器上验证通过!');
   } else {
     log('⚠️ 存在失败项, 详见上方输出');
   }

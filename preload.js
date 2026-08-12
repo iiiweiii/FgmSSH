@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - Preload 脚本
+ * FgmSSH - Preload 脚本
  * 通过 contextBridge 安全暴露 IPC API 给渲染进程
  */
 const { contextBridge, ipcRenderer, webUtils } = require('electron');

@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - PDF 方案 A 深入探针 (对照实验)
+ * FgmSSH - PDF 方案 A 深入探针 (对照实验)
  * 场景:
  *   S1: file:// PDF 顶层导航 (控制组, 应显示内置 viewer)
  *   S2: file:// PDF 在 iframe 内

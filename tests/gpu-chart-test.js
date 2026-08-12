@@ -1,5 +1,5 @@
 /**
- * NimbusSSH GPU 监控折线图模块回归测试 (node 直跑, 不依赖 Electron / DOM)
+ * FgmSSH GPU 监控折线图模块回归测试 (node 直跑, 不依赖 Electron / DOM)
  * 运行: node tests/gpu-chart-test.js
  * 覆盖:
  *   1. createGpuHistory: 滚动窗口上限 (60 点不无限增长) / push 返回值 / clear

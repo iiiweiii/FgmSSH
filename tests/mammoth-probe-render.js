@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - mammoth 探针渲染脚本 (经典 script, 遵守 CSP script-src 'self')
+ * FgmSSH - mammoth 探针渲染脚本 (经典 script, 遵守 CSP script-src 'self')
  */
 window.__result = 'pending';
 const r = document.getElementById('r');

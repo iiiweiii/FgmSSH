@@ -1,5 +1,5 @@
 /* ============================================
-   NimbusSSH - 现代化主题 (深色默认 + 浅色可选)
+   FgmSSH - 现代化主题 (深色默认 + 浅色可选)
    ============================================
    主题切换机制 (Roadmap P2):
    - 默认 :root 即深色 (兼容旧版, 未设置 data-theme 时保持纯深色外观);
@@ -1690,39 +1690,6 @@ body.terminal-fullscreen .terminal-host { padding: 0 8px; }
 .monitor-disk-bar.warn > i { background: var(--yellow); }
 .monitor-disk-bar.crit > i { background: var(--red); }
 .monitor-na { color: var(--text-faint); font-size: 12px; }
-/* 磁盘卡片「未匹配白名单」调试区: df 实际输出中未命中白名单的挂载点 (弱化展示, 供排查
-   df 输出是否含 /root/autodl-tmp / 挂载路径名差异; 全部命中白名单时整块不渲染) */
-.monitor-disk-unmatched {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--border-soft);
-  opacity: 0.55;
-}
-.monitor-disk-unmatched-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: #888;
-  margin: 0 0 4px;
-}
-.monitor-disk-unmatched-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-  color: #888;
-  padding: 1px 0;
-}
-.monitor-disk-unmatched-mount {
-  font-family: var(--font-mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.monitor-disk-unmatched-pct {
-  font-family: var(--font-mono);
-  flex-shrink: 0;
-}
 /* GPU 卡片 (基本信息下方): SVG 折线图 + 当前数值 chips; 折线颜色在 gpu-chart.js 中与主题协调 */
 .monitor-gpu-card h4 {
   overflow: hidden;

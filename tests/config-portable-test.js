@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 配置加密导出/导入模块回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 配置加密导出/导入模块回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/config-portable-test.js
  * 覆盖:
  *   1. exportConfig 成功: 返回 v1 负载 (v/kdf/salt/iv/tag/data/meta), 无明文 JSON 泄露

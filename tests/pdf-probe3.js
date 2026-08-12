@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - PDF 内置 viewer 启用条件探针 (v3)
+ * FgmSSH - PDF 内置 viewer 启用条件探针 (v3)
  * 保留 disableHardwareAcceleration/disable-gpu (与线上一致),
  * 移除 disable-software-rasterizer, 验证内置 PDF viewer 是否可用。
  */

@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 更新检查模块 (update-check)
+ * FgmSSH - 更新检查模块 (update-check)
  * ============================================================
  * 职责 (Roadmap 第一梯队 ③, 纯 node, 主进程使用):
  *   - 启动延迟静默检查 GitHub Releases API, 比对 tag_name 与本地版本。
@@ -27,12 +27,12 @@ const GITHUB_WEB = 'https://github.com/';
 // 默认配置 (owner/repo 对应真实仓库; 调用方 main.js 总会显式注入, 此处仅为缺省兜底)
 const DEFAULT_CONFIG = {
   owner: 'iiiweiii',
-  repo: 'NimbusSSH',
+  repo: 'FgmSSH',
   timeoutMs: 5000,        // 请求超时 (静默跳过)
   initialDelayMs: 4000,   // 启动延迟 (不阻塞启动)
   intervalMs: 24 * 3600 * 1000, // 每 24h 一次
   autoCheck: true,        // 总开关
-  userAgent: 'nimbus-ssh-update-check',
+  userAgent: 'fgm-ssh-update-check',
 };
 
 /**

@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 主题模块回归测试 (node 直跑, 不依赖 DOM/Electron)
+ * FgmSSH 主题模块回归测试 (node 直跑, 不依赖 DOM/Electron)
  * 运行: node tests/theme-test.js
  * 覆盖 (Roadmap P2: light/dark/auto 三态 + 持久化 + xterm 同步):
  *   1. 首次启动读取 localStorage (light/dark/auto/损坏值回退 auto)
@@ -376,7 +376,79 @@ async function run() {
     assert.deepStrictEqual(doc._sets, ['dark'], '强制 dark 下不应因系统变化重设');
   });
 
-  // ---------- 6. 纯函数 + 图表配色 ----------
+  // ---------- 7. 浅色 xterm 色板可读性 (v1.1.0 修复「浅色主题终端白字看不清」) ----------
+  await test('XTERM_THEMES.light: white/brightWhite 非纯白 (白底可读), black/brightBlack 非纯黑刺眼', () => {
+    const light = NimbusTheme.XTERM_THEMES.light;
+    assert.strictEqual(light.background, '#ffffff');
+    assert.notStrictEqual(light.white.toLowerCase(), '#ffffff', 'ANSI white 不得为纯白 (白底不可见)');
+    assert.notStrictEqual(light.brightWhite.toLowerCase(), '#ffffff', 'ANSI brightWhite 不得为纯白 (白底不可见)');
+    assert.notStrictEqual(light.black.toLowerCase(), '#000000', 'ANSI black 不得为纯黑 (白底太刺眼)');
+    assert.notStrictEqual(light.brightBlack.toLowerCase(), '#000000', 'ANSI brightBlack 不得为纯黑');
+    // white/brightWhite 应为深色调 (可读性契约): 亮度应显著低于白底
+    const isDark = (hex) => {
+      const h = hex.replace('#', '');
+      const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+      return (r + g + b) / 3 < 180; // 平均亮度 < 180/255 视为深色
+    };
+    assert.ok(isDark(light.white), 'white 应为深色调 (平均亮度 < 180)');
+    assert.ok(isDark(light.brightWhite), 'brightWhite 应为深色调 (平均亮度 < 180)');
+    assert.ok(isDark(light.black), 'black 应为深色调');
+    assert.ok(isDark(light.brightBlack), 'brightBlack 应为深色调');
+    // 16 个 ANSI 色全键存在且为字符串
+    const ansiKeys = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+      'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'];
+    for (const k of ansiKeys) {
+      assert.ok(typeof light[k] === 'string' && light[k].length > 0, 'light.' + k + ' 缺失');
+    }
+  });
+
+  await test('XTERM_THEMES.dark 保持原值零变化 (深色主题不因本次修复受影响)', () => {
+    const dark = NimbusTheme.XTERM_THEMES.dark;
+    assert.strictEqual(dark.background, '#0e1116');
+    assert.strictEqual(dark.foreground, '#e6eaf0');
+    assert.strictEqual(dark.white, '#e6eaf0');
+    assert.strictEqual(dark.brightWhite, '#ffffff');
+  });
+
+  // ---------- 8. renderer.js createTerminal 跟随当前主题 (v1.1.0) ----------
+  await test('renderer.js: createTerminal 主题跟随当前主题 (静态断言)', () => {
+    const rendererSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'renderer.js'), 'utf8');
+    assert.ok(rendererSrc.includes('function currentXtermTheme()'), '应存在 currentXtermTheme 函数');
+    assert.ok(rendererSrc.includes('themeController.currentTheme()'), 'currentXtermTheme 应取当前主题');
+    assert.ok(rendererSrc.includes('XTERM_THEMES[theme]'), 'currentXtermTheme 应从 XTERM_THEMES 取主题');
+    assert.ok(rendererSrc.includes('DEFAULT_TERM_THEME'), '应保留深色 fallback 常量');
+    assert.ok(/theme:\s*currentXtermTheme\(\)/.test(rendererSrc), 'createTerminal theme 应调用 currentXtermTheme()');
+    // 不再硬编码深色对象作为 theme 字面量
+    assert.ok(!/theme:\s*\{\s*background:\s*'#0e1116'/.test(rendererSrc), 'createTerminal 不得再硬编码深色 theme 对象');
+  });
+
+  await test('renderer.js: currentXtermTheme 行为 — light 主题 -> XTERM_THEMES.light; 未初始化 -> dark fallback', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const rendererSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer.js'), 'utf8');
+    const m = rendererSrc.match(/function currentXtermTheme\(\)\s*\{([\s\S]*?)\n\}/);
+    assert.ok(m, '无法提取 currentXtermTheme 函数体');
+    const body = m[1];
+    const makeFn = (win, ctrl) => new Function('window', 'themeController', 'DEFAULT_TERM_THEME',
+      '"use strict"; return (function currentXtermTheme() {' + body + '\n});')(win, ctrl, NimbusTheme.XTERM_THEMES.dark);
+    // 主题控制器返回 light -> 使用浅色主题
+    const r1 = makeFn({ NimbusTheme }, { currentTheme: () => 'light' })();
+    assert.deepStrictEqual(r1, NimbusTheme.XTERM_THEMES.light, 'light 主题应返回浅色 xterm 主题');
+    // 主题控制器返回 dark -> 使用深色主题
+    const r2 = makeFn({ NimbusTheme }, { currentTheme: () => 'dark' })();
+    assert.deepStrictEqual(r2, NimbusTheme.XTERM_THEMES.dark, 'dark 主题应返回深色 xterm 主题');
+    // 未知主题 -> 回退 dark
+    const r3 = makeFn({ NimbusTheme }, { currentTheme: () => 'neon' })();
+    assert.deepStrictEqual(r3, NimbusTheme.XTERM_THEMES.dark, '未知主题应回退 dark');
+    // 主题控制器未初始化 (null) -> 回退 DEFAULT_TERM_THEME (深色)
+    const r4 = makeFn({ NimbusTheme }, null)();
+    assert.ok(r4 && r4.background === '#0e1116', '未初始化应回退深色 fallback');
+    // window.NimbusTheme 缺失 -> 回退深色
+    const r5 = makeFn({}, { currentTheme: () => 'light' })();
+    assert.ok(r5 && r5.background === '#0e1116', 'NimbusTheme 缺失应回退深色 fallback');
+  });
+
+  // ---------- 9. 纯函数 + 图表配色 (GPU 折线图注入用) ----------
   await test('normalize: 仅接受 light/dark/auto, 其余回退 auto', () => {
     assert.strictEqual(NimbusTheme.normalize('light'), 'light');
     assert.strictEqual(NimbusTheme.normalize('dark'), 'dark');

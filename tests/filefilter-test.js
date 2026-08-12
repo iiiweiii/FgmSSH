@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - Roadmap 第三梯队 ① SFTP 文件搜索/过滤 测试 (node 直跑, 无需 Electron)
+ * FgmSSH - Roadmap 第三梯队 ① SFTP 文件搜索/过滤 测试 (node 直跑, 无需 Electron)
  *
  * 1) 客户端过滤逻辑 (src/file-filter.js):
  *    - 子串不区分大小写 / 清空恢复全部 / 空目录 / 特殊字符正则安全 (子串非正则)

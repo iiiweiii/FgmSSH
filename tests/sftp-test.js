@@ -1,5 +1,5 @@
 /**
- * NimbusSSH SFTP 功能集成测试
+ * FgmSSH SFTP 功能集成测试
  * 使用与 src/main.js 中 SFTP 实现完全相同的调用方式 (promisify + 流式管道),
  * 验证: 目录列表 / 新建目录 / 上传 / 下载 / 重命名 / 递归删除 全链路.
  * 目标: 用户提供的真实服务器 (与 real-server-test.js 同一台)

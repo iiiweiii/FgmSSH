@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 常用命令收藏模块 (fav-commands)
+ * FgmSSH - 常用命令收藏模块 (fav-commands)
  * ============================================================
  * 职责:
  *   - 常用命令收藏的纯逻辑: localStorage 持久化 (key: nimbus.favCommands)

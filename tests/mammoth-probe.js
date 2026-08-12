@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - mammoth (docx -> html) 技术实测
+ * FgmSSH - mammoth (docx -> html) 技术实测
  *
  * 目的: 验证 mammoth.browser.js 在 Electron 31 + CSP script-src 'self' 下:
  *   - 经典 script 外部文件加载 (与 xterm 相同方式, 来自 node_modules)

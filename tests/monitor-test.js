@@ -1,15 +1,17 @@
 /**
- * NimbusSSH 服务器健康监控模块回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 服务器健康监控模块回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/monitor-test.js
  * 覆盖:
  *   1. parseUptime: Linux uptime / /proc/loadavg / macOS / 空输出
  *   2. parseFree: free -k 无后缀 / free -h 带单位 / busybox / 无 Swap
- *   3. parseDf: POSIX 单行 / 多挂载点 / Use% 排序与 Top 限制 / 空 / 可选白名单过滤
+ *   3. parseDf: POSIX 单行 / 多挂载点 / Use% 排序与 Top 限制 / 空 / 可选白名单过滤 (保留)
  *   4. parseTopCpu: %Cpu(s) 标准 / 多核取首个 / mpstat 兜底 / 无法解析
  *   5. parseOsRelease: PRETTY_NAME / NAME 兜底 / 缺失
  *   6. parseNvidiaSmi: CSV 单卡 / 多卡 / [N/A] 指标 / 表格降级 / 无数据 / command not found
  *   7. fetchMonitorData: mock exec 全成功 (含 gpu) / 单命令失败不阻塞 / 输出无法解析 /
  *      全失败 (8 命令) / exec 缺失抛错 / stderr 记录
+ *      + v1.1.0 磁盘恢复原逻辑: 全部挂载点按 Use% 降序 Top 5, 不再按白名单过滤,
+ *        不再透传 diskUnmatched/diskMountWhitelist (renderer 调试区已删除)
  *   8. main.js/preload.js/index.html 静态断言: ssh:monitor:fetch handler + monitorFetch 桥接
  *      + nvidia-smi 命令 + GPU 卡片/折线 + 内存 GB 格式化
  */
@@ -164,12 +166,12 @@ async function run() {
     assert.deepStrictEqual(parseDf(null), []);
   });
 
-  await test('health-parser: DISK_MOUNT_WHITELIST 导出且含 3 个挂载点', () => {
+  await test('health-parser: DISK_MOUNT_WHITELIST 仍导出 (已废弃, 兼容 require)', () => {
     assert.ok(Array.isArray(parser.DISK_MOUNT_WHITELIST), '应导出 DISK_MOUNT_WHITELIST');
     assert.deepStrictEqual(
       parser.DISK_MOUNT_WHITELIST,
       ['/', '/root/autodl-tmp', '/root/autodl-fs'],
-      '白名单应为用户服务器配置的 3 个挂载点'
+      '白名单常量保留原值 (v1.1.0 起 fetchMonitorData 不再使用, 仅兼容导出)'
     );
   });
 
@@ -290,10 +292,9 @@ async function run() {
     assert.strictEqual(none.unmatched.length, 0);
   });
 
-  await test('静态: renderer.js 不再出现 "Top 5" 文案 (磁盘卡片标题已改为 "磁盘")', () => {
+  await test('静态: renderer.js 磁盘卡片标题为 "磁盘" (不显示 "Top 5" 文案)', () => {
     const rendererSrc = fs.readFileSync(path.join(ROOT, 'src', 'renderer.js'), 'utf8');
-    assert.ok(!rendererSrc.includes('Top 5'), 'renderer.js 不得残留 "Top 5" 文案');
-    assert.ok(!rendererSrc.includes('Top5'), 'renderer.js 不得残留 "Top5" 文案');
+    assert.ok(!rendererSrc.includes('<h4>Top 5'), '磁盘卡片标题不得为 "Top 5"');
     assert.ok(rendererSrc.includes('<h4>磁盘</h4>'), '磁盘卡片标题应为 "磁盘"');
     assert.ok(rendererSrc.includes('normalizeMountPath'), 'renderer 应含挂载点归一化函数');
   });
@@ -459,37 +460,14 @@ async function run() {
     assert.deepStrictEqual(data.errors, {}, '全成功时不应有错误');
   });
 
-  await test('fetchMonitorData: disks 按白名单预过滤 + diskMountWhitelist 透传 (单一事实源)', async () => {
+  await test('fetchMonitorData: disks 不再按白名单过滤 — 全部挂载点按 Use% 降序 Top 5', async () => {
     const exec = makeMockExec({
       [C.load]: ' 12:34:56 up 1 day, load average: 0.52, 0.58, 0.59',
       [C.memory]: 'Mem:  16258316  3456789  12800000\n',
       [C.disks]: 'Filesystem      Size  Used Avail Use% Mounted on\n' +
                  '/dev/sda1  99G  45G  49G  48% /\n' +
                  '/dev/sda2  200G  150G  40G  79% /home\n' +
-                 '/dev/sdb1  300G  290G   -1G 100% /root/autodl-tmp\n',
-      [C.cpu]: '%Cpu(s):  3.1 us,  0.7 sy,  0.0 ni, 95.8 id,  0.3 wa,  0.0 hi,  0.0 si,  0.0 st\n',
-      [C.hostname]: 'web-01\n',
-      [C.os]: 'PRETTY_NAME="Ubuntu 22.04.3 LTS"\n',
-      [C.date]: '2026-08-12T10:00:00Z\n',
-      [C.gpu]: 'NVIDIA GeForce RTX 3080, 45, 5120, 10240, 67, 180.5\n',
-    });
-    const data = await fetchMonitorData({ exec, identity: 'root@1.2.3.4' });
-    assert.ok(Array.isArray(data.diskMountWhitelist), '应透传 diskMountWhitelist');
-    assert.deepStrictEqual(data.diskMountWhitelist, ['/', '/root/autodl-tmp', '/root/autodl-fs']);
-    assert.strictEqual(data.disks.length, 2, '白名单外 /home 不应出现在 disks (df 中 /root/autodl-fs 不存在 -> 不显示)');
-    assert.ok(data.disks.every((d) => data.diskMountWhitelist.includes(d.mounted)), 'disks 全部应在白名单内');
-    assert.strictEqual(data.disks[0].mounted, '/root/autodl-tmp', '白名单内按使用率降序');
-    assert.strictEqual(data.disks[1].mounted, '/');
-  });
-
-  await test('fetchMonitorData: diskUnmatched 透传白名单外挂载点 (与 disks 同批 rows 划分)', async () => {
-    const exec = makeMockExec({
-      [C.load]: ' 12:34:56 up 1 day, load average: 0.52, 0.58, 0.59',
-      [C.memory]: 'Mem:  16258316  3456789  12800000\n',
-      [C.disks]: 'Filesystem      Size  Used Avail Use% Mounted on\n' +
-                 '/dev/sda1  99G  45G  49G  48% /\n' +
-                 '/dev/sda2  200G  150G  40G  79% /home\n' +
-                 '/dev/sdb1  300G  290G   -1G 100% /root/autodl-tmp\n' +
+                 '/dev/sdb1  300G  290G  -1G 100% /root/autodl-tmp\n' +
                  '/dev/sdc1  100G  80G  20G  88% /root/autodl-fs\n' +
                  '/dev/sdd1  50G   1G  49G   2% /data\n',
       [C.cpu]: '%Cpu(s):  3.1 us,  0.7 sy,  0.0 ni, 95.8 id,  0.3 wa,  0.0 hi,  0.0 si,  0.0 st\n',
@@ -499,13 +477,34 @@ async function run() {
       [C.gpu]: 'NVIDIA GeForce RTX 3080, 45, 5120, 10240, 67, 180.5\n',
     });
     const data = await fetchMonitorData({ exec, identity: 'root@1.2.3.4' });
-    assert.strictEqual(data.disks.length, 3, '白名单内 3 个挂载点 (/, tmp, fs)');
-    assert.strictEqual(data.diskUnmatched.length, 2, '白名单外 2 个挂载点透传 (/home, /data)');
-    assert.deepStrictEqual(data.diskUnmatched.map((d) => d.mounted).sort(), ['/data', '/home']);
-    assert.ok(data.diskUnmatched.every((d) => !data.diskMountWhitelist.includes(d.mounted)),
-      'diskUnmatched 不应含白名单挂载点');
-    assert.ok(data.diskUnmatched.some((d) => d.mounted === '/home' && d.usedPct === 79),
-      'diskUnmatched 应保留完整 df 字段 (usedPct) 供调试区展示');
+    assert.strictEqual(data.diskMountWhitelist, undefined, 'v1.1.0 起不再透传 diskMountWhitelist');
+    assert.strictEqual(data.diskUnmatched, undefined, 'v1.1.0 起不再透传 diskUnmatched');
+    // 全部 5 个挂载点按 Use% 降序 (不过滤白名单, 恰好 5 个 -> 全量)
+    assert.deepStrictEqual(data.disks.map((d) => d.mounted), ['/root/autodl-tmp', '/root/autodl-fs', '/home', '/', '/data']);
+    assert.ok(data.disks.every((d) => typeof d.usedPct === 'number'), 'disks 应保留完整 df 字段');
+  });
+
+  await test('fetchMonitorData: 超过 5 个挂载点 -> 按 Use% 降序截断 Top 5 (不过滤)', async () => {
+    const exec = makeMockExec({
+      [C.load]: ' 12:34:56 up 1 day, load average: 0.52, 0.58, 0.59',
+      [C.memory]: 'Mem:  16258316  3456789  12800000\n',
+      [C.disks]: 'Filesystem      Size  Used Avail Use% Mounted on\n' +
+                 '/dev/sda1  99G  45G  49G  48% /\n' +
+                 '/dev/sda2  200G  150G  40G  79% /home\n' +
+                 '/dev/sdb1  300G  290G  -1G 100% /root/autodl-tmp\n' +
+                 '/dev/sdc1  100G  80G  20G  88% /root/autodl-fs\n' +
+                 '/dev/sdd1  50G   1G  49G   2% /data\n' +
+                 '/dev/sde1  400G  390G  10G  97% /var/lib/docker\n',
+      [C.cpu]: '%Cpu(s):  3.1 us,  0.7 sy,  0.0 ni, 95.8 id,  0.3 wa,  0.0 hi,  0.0 si,  0.0 st\n',
+      [C.hostname]: 'web-01\n',
+      [C.os]: 'PRETTY_NAME="Ubuntu 22.04.3 LTS"\n',
+      [C.date]: '2026-08-12T10:00:00Z\n',
+      [C.gpu]: 'NVIDIA GeForce RTX 3080, 45, 5120, 10240, 67, 180.5\n',
+    });
+    const data = await fetchMonitorData({ exec, identity: 'root@1.2.3.4' });
+    assert.strictEqual(data.disks.length, 5, '超过 5 个挂载点时应截断 Top 5');
+    assert.deepStrictEqual(data.disks.map((d) => d.mounted), ['/root/autodl-tmp', '/var/lib/docker', '/root/autodl-fs', '/home', '/'],
+      '全部挂载点按 Use% 降序 (100, 97, 88, 79, 48), 不因白名单而保留低使用率挂载点');
   });
 
   await test('fetchMonitorData: 单命令失败不阻塞 (top 抛错 -> cpu=null + errors.cpu; gpu 不受影响)', async () => {
@@ -630,26 +629,29 @@ async function run() {
     assert.ok(!rendererSrc.includes('+ \' MB\''), '内存显示不应再出现 MB 后缀拼接');
   });
 
-  await test('renderer.js: 磁盘渲染按 DISK_MOUNT_WHITELIST 过滤 (静态断言)', () => {
+  await test('renderer.js: 磁盘卡片直接渲染 res.disks (不再按白名单过滤)', () => {
     const rendererSrc = fs.readFileSync(path.join(ROOT, 'src', 'renderer.js'), 'utf8');
-    // 白名单在 renderer 被引用 (单一事实源来自 health-parser, 经 IPC 透传)
-    assert.ok(rendererSrc.includes('DISK_MOUNT_WHITELIST'), 'renderer 应引用 DISK_MOUNT_WHITELIST');
-    assert.ok(rendererSrc.includes('res.diskMountWhitelist'), 'renderer 白名单应来自 monitorFetch 透传 (不重复硬编码)');
-    // 磁盘渲染含白名单过滤逻辑 (基于挂载点字段 mounted)
-    assert.ok(rendererSrc.includes('disks.filter((d) => DISK_MOUNT_WHITELIST.includes(d.mounted))'), '磁盘渲染应含白名单 filter');
-    assert.ok(rendererSrc.includes('whitelistedDisks.map'), '磁盘列表应基于过滤后的数组渲染');
+    // 磁盘渲染基于 res.disks 原样 (解析层已按 Use% 降序 Top 5)
+    assert.ok(rendererSrc.includes('res.disks'), 'renderer 应直接引用 res.disks');
+    assert.ok(rendererSrc.includes('disks.map((d) => `'), '磁盘列表应基于 disks 数组渲染');
+    assert.ok(rendererSrc.includes('monitor-disk-row'), '磁盘行渲染 class 应保留');
+    assert.ok(rendererSrc.includes('<h4>磁盘</h4>'), '磁盘卡片标题应为 "磁盘"');
+    // 白名单相关代码已删除
+    assert.ok(!rendererSrc.includes('res.diskMountWhitelist'), 'renderer 不得再引用 diskMountWhitelist');
+    assert.ok(!rendererSrc.includes('whitelistedDisks'), 'renderer 不得再含 whitelistedDisks');
+    assert.ok(!rendererSrc.includes('DISK_MOUNT_WHITELIST'), 'renderer 不得再引用 DISK_MOUNT_WHITELIST');
+    assert.ok(!rendererSrc.includes('disks.filter((d) =>'), 'renderer 不得再含挂载点 filter');
   });
 
-  await test('renderer.js: 磁盘卡片含「未匹配白名单」调试区 (静态断言)', () => {
+  await test('renderer.js: 磁盘卡片不再含「未匹配白名单」调试区', () => {
     const rendererSrc = fs.readFileSync(path.join(ROOT, 'src', 'renderer.js'), 'utf8');
-    assert.ok(rendererSrc.includes('未匹配白名单'), '磁盘卡片应含未匹配白名单调试区标题');
-    assert.ok(rendererSrc.includes('monitor-disk-unmatched'), '应含未匹配区容器 class (弱化样式)');
-    assert.ok(rendererSrc.includes('res.diskUnmatched'), '未匹配区数据源应来自 res.diskUnmatched (解析层单遍划分)');
-    assert.ok(rendererSrc.includes('unmatchedDisks.length > 0'), '未匹配区应在存在未匹配挂载点时渲染 (全部命中则隐藏)');
-    assert.ok(rendererSrc.includes('escapeHtml(d.mounted)'), '未匹配区挂载点应 escapeHtml (防 XSS)');
-    // 未匹配区不破坏白名单主区: 白名单过滤逻辑与列表渲染保持原样
-    assert.ok(rendererSrc.includes('disks.filter((d) => DISK_MOUNT_WHITELIST.includes(d.mounted))'), '白名单主区过滤逻辑应保留');
-    assert.ok(rendererSrc.includes('whitelistedDisks.map'), '白名单主区列表渲染应保留');
+    assert.ok(!rendererSrc.includes('未匹配白名单'), '磁盘卡片不得再含未匹配白名单调试区标题');
+    assert.ok(!rendererSrc.includes('monitor-disk-unmatched'), '不得再引用 monitor-disk-unmatched class');
+    assert.ok(!rendererSrc.includes('res.diskUnmatched'), '不得再引用 res.diskUnmatched');
+    assert.ok(!rendererSrc.includes('unmatchedDisks'), '不得再引用 unmatchedDisks');
+    // 样式表同步删除调试区样式
+    const styleSrc = fs.readFileSync(path.join(ROOT, 'src', 'style.css'), 'utf8');
+    assert.ok(!styleSrc.includes('monitor-disk-unmatched'), 'style.css 不得残留 monitor-disk-unmatched 样式');
   });
 
   await test('index.html: 引入 gpu-chart.js + 监控面板元素存在 + 数据来源含 nvidia-smi', () => {

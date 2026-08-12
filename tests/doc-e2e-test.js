@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 内置文档查看器 + 打开文档不多开终端 端到端验证 (CDP 驱动)
+ * FgmSSH - 内置文档查看器 + 打开文档不多开终端 端到端验证 (CDP 驱动)
  *
  * 流程:
  *  1. 通过 ssh2 在远端准备测试文件 (hello.txt / sample.pdf / sample.docx / old.doc)

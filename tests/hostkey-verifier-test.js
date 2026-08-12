@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - 主机密钥指纹校验 (hostVerifier) 集成测试 (node 直跑, 无 Electron)
+ * FgmSSH - 主机密钥指纹校验 (hostVerifier) 集成测试 (node 直跑, 无 Electron)
  * 运行: node tests/hostkey-verifier-test.js
  *
  * 方法: 用 vm 沙箱加载真实 main.js (mock electron/ssh2/audit-log, 其余本地纯 node 模块

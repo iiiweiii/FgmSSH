@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - 主机密钥指纹 e2e 验证 (真实 ssh2 Server + Client, node 直跑)
+ * FgmSSH - 主机密钥指纹 e2e 验证 (真实 ssh2 Server + Client, node 直跑)
  * 运行: node tests/hostkey-e2e-test.js
  *
  * 目的: 验证「ssh2 hostVerifier 收到的 host key Buffer」与 hostkey-store.computeFingerprint

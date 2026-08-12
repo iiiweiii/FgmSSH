@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - Roadmap ③ SFTP 拖拽上传 安全闸门补充验证 (QA 独立编写, node 直跑)
+ * FgmSSH - Roadmap ③ SFTP 拖拽上传 安全闸门补充验证 (QA 独立编写, node 直跑)
  *
  * 目标: 对 dragdrop-test.js 未覆盖的主进程「登记→消费」机制做补充验证:
  *   1) sftp:registerUploadPaths 登记入口安全性 (提取 main.js 真实 handler, vm 沙箱执行):

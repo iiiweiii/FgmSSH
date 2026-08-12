@@ -1,5 +1,5 @@
 @echo off
-REM NimbusSSH 打包脚本 - 生成 Windows 便携版 EXE
+REM FgmSSH 打包脚本 - 生成 Windows 便携版 EXE
 REM 需要先安装 electron-builder: npm install --save-dev electron-builder
 
 setlocal
@@ -12,6 +12,6 @@ if not exist "node_modules\.bin\electron-builder.cmd" (
 
 echo 开始打包为 Windows 便携版...
 "./node_modules/.bin/electron-builder.cmd" --win portable
-echo 打包产物: dist\NimbusSSH *.exe
+echo 打包产物: dist\FgmSSH *.exe
 
 endlocal

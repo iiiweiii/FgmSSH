@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 操作日志模块回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 操作日志模块回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/audit-log-test.js
  * 覆盖:
  *   1. logAudit 落盘格式 (JSON Lines, 字段齐全, 白名单)

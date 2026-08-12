@@ -1,13 +1,13 @@
-# NimbusSSH 操作日志系统 (Audit Log) 设计说明
+# FgmSSH 操作日志系统 (Audit Log) 设计说明
 
-> 本文档描述 NimbusSSH 的完整操作日志实现方案：日志 Schema、脱敏策略、写入路径、
+> 本文档描述 FgmSSH 的完整操作日志实现方案：日志 Schema、脱敏策略、写入路径、
 > 查询接口用法、性能说明，以及如何扩展新的操作类型。
 
 ---
 
 ## 1. 概述
 
-NimbusSSH 在**主进程**中实现了一个轻量、低侵入的操作日志模块 `src/audit-log.js`：
+FgmSSH 在**主进程**中实现了一个轻量、低侵入的操作日志模块 `src/audit-log.js`：
 
 - 每次关键操作（连接/断开/SFTP 文件操作/文档打开保存/图片预览等）自动记录一条**结构化 JSON** 日志；
 - 采用 **JSON Lines** 格式持久化（每行一条独立 JSON），按天滚动 `audit-YYYY-MM-DD.jsonl`；
@@ -28,7 +28,7 @@ NimbusSSH 在**主进程**中实现了一个轻量、低侵入的操作日志模
 | -------- | ------ | ---- | -------------------------------------------------------------------- |
 | `ts`     | string | ✅   | ISO 8601 时间戳，自动生成（忽略调用方传入值，保证单调可排序）        |
 | `level`  | string | ✅   | 日志级别，默认 `INFO`                                                 |
-| `user`   | string | ✅   | 用户标识：`username@host`（NimbusSSH 无登录体系，用连接用户名/主机）  |
+| `user`   | string | ✅   | 用户标识：`username@host`（FgmSSH 无登录体系，用连接用户名/主机）  |
 | `session`| string | ✅   | 会话 ID（渲染层 `sessionId`）                                        |
 | `type`   | string | ✅   | 操作类型（见下）                                                      |
 | `target` | string | ✅   | 操作对象/目标：远程路径 / 文件名 / `host:port`                        |
@@ -96,7 +96,7 @@ SSH 握手/协商细节在埋点层就不写入（埋点只写 `friendlySSHError
 
 - 日志目录：`app.getPath('userData')/logs`
   - 安装版：`%APPDATA%/<appName>/logs`
-  - **portable 版：`%APPDATA%/NimbusSSH/logs`**（userData 稳定可写，不随临时解压目录消失）
+  - **portable 版：`%APPDATA%/FgmSSH/logs`**（userData 稳定可写，不随临时解压目录消失）
 - 文件名：`audit-YYYY-MM-DD.jsonl`（按天滚动，`getCurrentLogFile()` 取当天文件）
 - 目录在 `app.whenReady` 中创建（`initAuditLog({ dir })`），失败仅警告不阻塞启动。
 

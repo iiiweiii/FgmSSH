@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - Roadmap ③ SFTP 拖拽上传 测试 (node 直跑, 无需 Electron)
+ * FgmSSH - Roadmap ③ SFTP 拖拽上传 测试 (node 直跑, 无需 Electron)
  *
  * 1) 静态断言 (读取真实源码):
  *    - preload.js  暴露 getPathForFile (webUtils.getPathForFile) 与 sftpRegisterUploadPaths

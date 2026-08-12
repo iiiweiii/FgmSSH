@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 连接凭据加密存储模块 (credential-store)
+ * FgmSSH - 连接凭据加密存储模块 (credential-store)
  * ============================================================
  * 职责:
  *   - 用 Electron 主进程 safeStorage (Windows 上为 DPAPI) 加密连接配置中的

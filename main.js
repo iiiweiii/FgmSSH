@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 主进程
+ * FgmSSH - 主进程
  * 负责: 创建窗口 / SSH 连接管理 / IPC 通信 / SFTP 文件传输 / 图片预览 / 系统托盘保活 / 服务器健康监控
  *
  * ==================== 应用生命周期 (托盘保活) ====================
@@ -56,6 +56,10 @@ const updateCheckModule = require('./src/update-check');
 // (userData/known_hosts.json, 明文非机密, 与加密凭据库分离) + OpenSSH 兼容指纹计算。
 // main.js 注入存储路径, 在 buildConnConfig 中挂接 ssh2 hostVerifier。
 const hostkeyStore = require('./src/hostkey-store');
+// userData 迁移 (纯 node, 见 src/userdata-migrate.js): v1.1.0 软件更名后
+// app.getPath('userData') 目录变更, 启动早期把更名前的旧目录内容复制到新目录
+// (防配置丢失), 幂等/只复制不删除。
+const { migrateUserData } = require('./src/userdata-migrate');
 
 // 防御性清理: 某些开发环境/宿主会注入 NODE_OPTIONS / ELECTRON_RUN_AS_NODE,
 // 会导致 Electron 拒绝启动 (--use-system-ca is not allowed in NODE_OPTIONS)
@@ -96,12 +100,13 @@ let mainWin = null;   // 主窗口引用 (托盘恢复用)
 const approvedLocalPaths = new Set();
 
 // ---------- 更新检查配置 (Roadmap 第一梯队 ③, S) ----------
-// 对应 GitHub 真实仓库 https://github.com/iiiweiii/NimbusSSH (public)。
-// 发布新版本时在 GitHub 创建 tag (如 v1.1.0) 即触发更新提醒 (compareVersions 与当前版本比较)。
+// 对应 GitHub 真实仓库 https://github.com/iiiweiii/FgmSSH (public; v1.1.0 软件更名,
+// 仓库已由维护者同步改名)。发布新版本时在 GitHub 创建 tag (如 v1.1.0)
+// 即触发更新提醒 (compareVersions 与当前版本比较)。
 // 单文件绿色版定位: 仅检查提示, 不自动下载/不自动升级; 失败/离线/超时一律静默。
 const UPDATE_CHECK_CONFIG = {
   owner: 'iiiweiii',
-  repo: 'NimbusSSH',
+  repo: 'FgmSSH',
   initialDelayMs: 4000,     // 启动延迟 (不阻塞启动)
   intervalMs: 24 * 3600 * 1000, // 启动一次 + 每 24h 一次
   timeoutMs: 5000,          // 请求超时 (静默跳过)
@@ -276,7 +281,7 @@ function getSession(winId, sessionId) {
 }
 
 // ---------- 操作日志辅助 ----------
-// 会话审计身份: user = username@host (NimbusSSH 无登录体系, 以「会话 ID + 连接用户名/主机」作为用户标识)
+// 会话审计身份: user = username@host (FgmSSH 无登录体系, 以「会话 ID + 连接用户名/主机」作为用户标识)
 function auditIdentity(winId, sessionId) {
   const session = sessions.get(`${winId}:${sessionId}`);
   return { user: (session && session.user) || null, session: sessionId };
@@ -2497,12 +2502,12 @@ ipcMain.handle('config:export', async (e, { password }) => {
     }
     const d = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    const defaultName = 'nimbus-connections-backup-' +
+    const defaultName = 'fgm-connections-backup-' +
       d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.json';
     const saveRes = await dialog.showSaveDialog({
       title: '导出加密配置',
       defaultPath: defaultName,
-      filters: [{ name: 'NimbusSSH 加密备份', extensions: ['json'] }],
+      filters: [{ name: 'FgmSSH 加密备份', extensions: ['json'] }],
     });
     if (saveRes.canceled || !saveRes.filePath) {
       return { ok: false, error: '已取消' };
@@ -2533,7 +2538,7 @@ ipcMain.handle('config:import', async (e, { password }) => {
     const openRes = await dialog.showOpenDialog({
       title: '导入加密配置',
       properties: ['openFile'],
-      filters: [{ name: 'NimbusSSH 加密备份', extensions: ['json'] }],
+      filters: [{ name: 'FgmSSH 加密备份', extensions: ['json'] }],
     });
     if (openRes.canceled || !openRes.filePaths || openRes.filePaths.length === 0) {
       return { ok: false, error: '已取消' };
@@ -2645,7 +2650,7 @@ function createTray() {
     tray = null;
     return;
   }
-  tray.setToolTip('NimbusSSH - SSH 客户端');
+  tray.setToolTip('FgmSSH - SSH 客户端');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '显示主窗口', click: showMainWindow },
     { type: 'separator' },
@@ -2691,7 +2696,7 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    title: 'NimbusSSH - 现代化 SSH 客户端',
+    title: 'FgmSSH - 现代化 SSH 客户端',
     backgroundColor: '#0f1216',
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'assets', 'icon.png'),
@@ -2750,9 +2755,45 @@ app.whenReady().then(() => {
   registerPreviewProtocol();
   registerDocProtocol();
 
+  // userData 迁移 (v1.1.0 软件更名): 必须是 userData 的【第一次触碰】, 必须在
+  // initAuditLog / loadConnections / settings:load / hostkey 读取之前执行, 否则
+  // 新目录 (%APPDATA%/FgmSSH) 下读不到旧数据。
+  // - initAuditLog 内部 fs.mkdirSync(userData/logs, {recursive:true}) 会连带创建父目录
+  //   新 userData 目录 —— 若迁移在其后执行, 会误判「新目录已存在」而跳过, 导致升级用户
+  //   connections.json(DPAPI 加密凭据)/known_hosts.json/settings.json/logs 全部丢失。
+  // - 迁移只复制不删除 (旧目录保留, 防回退); DPAPI 加密凭据与路径无关, 拷贝后仍可解密
+  // - 迁移结果在下方 initAuditLog 之后补记 audit-log (type: store.migrate): 因 logAudit
+  //   在 logDir 未初始化时静默丢弃, 此处仅 console 输出过程, 结果摘要留待 init 后落盘。
+  // 旧 userData 目录名 = 更名前产品名; 迁移必须用旧名计算旧路径, 不能用当前 productName。
+  const OLD_USER_DATA_DIR_NAME = 'NimbusSSH';
+  let migrateSummary = null;
+  try {
+    const oldUserData = path.join(app.getPath('appData'), OLD_USER_DATA_DIR_NAME);
+    const newUserData = app.getPath('userData');
+    const migrateRes = migrateUserData({
+      fs,
+      path,
+      oldDir: oldUserData,
+      newDir: newUserData,
+      log: (m) => console.log('[FgmSSH][store.migrate] ' + m),
+    });
+    migrateSummary = {
+      result: migrateRes.migrated ? 'success' : 'skip',
+      detail: `userData 迁移: ${migrateRes.migrated ? '已从 ' + oldUserData + ' 复制到 ' + newUserData : '未迁移 (' + migrateRes.reason + ')'}`,
+    };
+  } catch (e) {
+    console.error('[FgmSSH] userData 迁移异常:', e && e.message);
+  }
+
   // 操作日志: 默认 userData/logs/audit-YYYY-MM-DD.jsonl
-  // (portable 版 userData = %APPDATA%/NimbusSSH, 稳定可写, 不随临时解压目录消失)
+  // (portable 版 userData = %APPDATA%/FgmSSH, 稳定可写, 不随临时解压目录消失)
   try { auditLog.initAuditLog({ dir: path.join(app.getPath('userData'), 'logs') }); } catch (e) {}
+  // 迁移结果补记 (initAuditLog 之后, logDir 已就绪): 保证升级/首启的迁移动作有审计记录。
+  if (migrateSummary) {
+    try {
+      auditLog.logAudit({ type: 'store.migrate', target: 'userData', result: migrateSummary.result, detail: migrateSummary.detail });
+    } catch (e) { /* 审计失败不阻塞启动 */ }
+  }
 
   createWindow();
   createTray();

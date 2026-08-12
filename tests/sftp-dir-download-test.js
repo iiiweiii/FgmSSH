@@ -1,5 +1,5 @@
 /**
- * NimbusSSH SFTP 文件夹打包下载 (ZIP) 集成测试
+ * FgmSSH SFTP 文件夹打包下载 (ZIP) 集成测试
  * 背景: main.js 依赖 Electron, 无法在纯 node 中 require。
  *       本测试复刻 main.js 新增的「自写 ZIP 写入器」全部函数 (与 main.js 保持一致),
  *       连真实服务器验证: 递归打包 / 目录层级 / 空文件夹 / 5MB 大文件流式 / 进度回调 / 错误映射。

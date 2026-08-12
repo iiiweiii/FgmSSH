@@ -305,12 +305,16 @@ function run() {
       'main.js 应在未显式设置 NIMBUS_DEV_DIAG 时默认开启诊断 (生产也开, 便于排查 df/白名单; 设 env=0 可关)');
   });
 
-  test('静态: renderer 归一化后再按白名单 includes 过滤 (防御性)', () => {
+  test('静态: renderer 归一化后直接渲染 disks (不再按白名单过滤)', () => {
     const reSrc = fs.readFileSync(path.join(ROOT, 'src', 'renderer.js'), 'utf8');
     assert.ok(reSrc.includes('mounted: normalizeMountPath(d.mounted)'),
-      'renderer 应在过滤前对 mounted 归一化');
-    assert.ok(reSrc.includes('disks.filter((d) => DISK_MOUNT_WHITELIST.includes(d.mounted))'),
-      'renderer 应基于归一化后的 mounted 做 includes 匹配');
+      'renderer 应在渲染前对 mounted 归一化');
+    assert.ok(reSrc.includes('disks.map((d) => `'),
+      'renderer 应直接基于 disks 数组渲染 (解析层已按 Use% 降序取前 5 条)');
+    assert.ok(!reSrc.includes('DISK_MOUNT_WHITELIST'),
+      'renderer 不得再引用 DISK_MOUNT_WHITELIST (白名单过滤已移除)');
+    assert.ok(!reSrc.includes('whitelistedDisks'),
+      'renderer 不得再含 whitelistedDisks');
   });
 
   console.log(`\nqa-supplemental-mountnorm: ${passed} passed, ${failed} failed`);

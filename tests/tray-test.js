@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 托盘最小化 + 后台保活回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 托盘最小化 + 后台保活回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/tray-test.js
  * 需求 (Roadmap 任务 2, P1 行为变更):
  *   - 主窗口关闭按钮 -> 最小化到系统托盘 (win.hide), 不退出进程, 不清理任何会话

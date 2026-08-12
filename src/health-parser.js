@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 服务器健康监控解析模块 (health-parser)
+ * FgmSSH - 服务器健康监控解析模块 (health-parser)
  * ============================================================
  * 职责:
  *   - 将远端常用命令输出 (uptime / free / df / top / hostname / os-release / date /
@@ -123,10 +123,10 @@ function parseFree(text) {
   return out;
 }
 
-// 磁盘挂载点白名单: 健康监控面板「磁盘」卡片仅展示以下挂载点, 其余挂载点一律不显示。
-// 这是按用户服务器 (autodl) 的实际磁盘配置定义的; 如需调整展示哪些挂载点, 改这里一处即可。
-// 单一事实源: 经 fetchMonitorData 返回的 diskMountWhitelist 字段透传给渲染层过滤 (渲染层
-// 再做防御性过滤), 不在 renderer 中重复硬编码。
+// 磁盘挂载点白名单 (已废弃): 早期版本健康监控「磁盘」卡片按白名单过滤展示挂载点。
+// 自 v1.1.0 (FgmSSH) 起恢复原逻辑 —— 全部挂载点按使用率降序展示 Top 5, 不再按白名单过滤,
+// fetchMonitorData 已不再使用白名单路径。此常量仅保留导出以兼容既有测试与第三方 require。
+// @deprecated 不要再在新代码中使用; 如需按挂载点过滤请直接调用 parseDf(text, max, whitelist)。
 const DISK_MOUNT_WHITELIST = ['/', '/root/autodl-tmp', '/root/autodl-fs'];
 
 /**
@@ -158,11 +158,12 @@ function dfDiagEnabled() {
  * 解析 df -h -P 输出 -> 磁盘挂载点列表 (按 Use% 降序, 最多 maxItems 条)
  * POSIX 单行格式: "Filesystem  Size  Used Avail Use% Mounted on"
  *                "/dev/sda1   99G   45G   49G  48% /"
- * 由 parseDfWithUnmatched 单遍解析后取 matched (保持数组返回, 兼容既有调用/测试)。
  * @param {string} text
  * @param {number} [maxItems] 返回条数上限 (默认 5)
  * @param {string[]} [whitelist] 可选挂载点白名单。传入后先按白名单过滤, 再排序/截断
  *   (保证白名单内的挂载点不会被 Top-N 截断); 不传/空数组 -> 不过滤, 保持原行为。
+ *   注意: fetchMonitorData 自 v1.1.0 起不再传白名单 (磁盘卡片恢复「全部挂载点按使用率
+ *   降序 Top 5」), 白名单参数仅供需要过滤的调用方自行使用。
  * @returns {Array<{filesystem:string, size:string, used:string, avail:string, usePct:string, usedPct:number, mounted:string}>}
  */
 function parseDf(text, maxItems, whitelist) {
@@ -172,10 +173,12 @@ function parseDf(text, maxItems, whitelist) {
 /**
  * 单遍解析 df 输出并划分 白名单内/白名单外 挂载点 (parseDf 与磁盘卡片「未匹配白名单」
  * 调试区共用同一批 rows, 避免重复解析)。
+ * @deprecated 自 v1.1.0 (FgmSSH) 起 fetchMonitorData 不再使用白名单路径, 磁盘卡片改为
+ *   全部挂载点按使用率降序 Top 5; 本函数保留 (parseDf 依赖其实现, 且兼容既有测试/require),
+ *   新代码请直接使用 parseDf。
  * 与 parseDf 同语义:
  *   - matched:   白名单内挂载点, 按 Use% 降序, 截断 limit (保证白名单不被 Top-N 挤掉)
- *   - unmatched: 白名单外挂载点, 按 Use% 降序, 不截断 (调试区渲染全部, 便于一眼看出
- *                 df 实际输出里到底有哪些挂载点 / 挂载路径名与白名单是否一致)
+ *   - unmatched: 白名单外挂载点, 按 Use% 降序, 不截断
  * 不传/空 whitelist -> matched=全部 rows, unmatched=[] (保持 parseDf 不过滤行为)。
  * @param {string} text
  * @param {number} [maxItems]
@@ -495,7 +498,6 @@ const MONITOR_COMMANDS = {
  *   info: {hostname: string|null, os: string|null, date: string|null},
  *   load: object|null, memory: object|null, disks: object[], cpu: object|null,
  *   gpu: {available:boolean, gpus:object[]}|null,
- *   diskMountWhitelist: string[],
  *   errors: {[section:string]: string}
  * }>}
  */
@@ -521,16 +523,10 @@ async function fetchMonitorData({ exec, identity }) {
     }
   }));
 
-  // 磁盘: 单遍解析 df 输出 (parseDfWithUnmatched), 同时得到 白名单内 (diskMatched,
-  // 过滤先于排序/截断, 保证白名单挂载点不被 Top-N 截断) 与 白名单外 (diskUnmatched,
-  // 全量不截断, 供磁盘卡片「未匹配白名单」调试区展示, 排查 df 实际输出/挂载点命名)。
-  let diskMatched = [];
-  let diskUnmatched = [];
-  if (results.disks) {
-    const diskSplit = parseDfWithUnmatched(results.disks, undefined, DISK_MOUNT_WHITELIST);
-    diskMatched = diskSplit.matched;
-    diskUnmatched = diskSplit.unmatched;
-  }
+  // 磁盘: 全部挂载点按使用率降序, 截断 Top 5 (v21 之前原逻辑, 不按白名单过滤)。
+  // 注: parseDfWithUnmatched / DISK_MOUNT_WHITELIST / diskUnmatched / diskMountWhitelist
+  // 已废弃 —— 函数本体与导出保留 (兼容既有测试与 require), 但这里不再走白名单路径。
+  const disks = results.disks ? parseDf(results.disks, 5) : [];
 
   const data = {
     identity: identity || '',
@@ -542,10 +538,7 @@ async function fetchMonitorData({ exec, identity }) {
     },
     load: results.load ? parseUptime(results.load) : null,
     memory: results.memory ? parseFree(results.memory) : null,
-    disks: diskMatched,
-    diskUnmatched,
-    // 白名单透传 (单一事实源): main.js 经 {ok:true, ...data} 原样返回, 渲染层据此防御性过滤
-    diskMountWhitelist: DISK_MOUNT_WHITELIST,
+    disks,
     cpu: results.cpu ? parseTopCpu(results.cpu) : null,
     gpu: results.gpu ? parseNvidiaSmi(results.gpu) : null,
     errors,

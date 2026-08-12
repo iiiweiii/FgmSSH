@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - Roadmap 第一梯队 ③ (S) 更新检查 测试 (node 直跑, 无需 Electron)
+ * FgmSSH - Roadmap 第一梯队 ③ (S) 更新检查 测试 (node 直跑, 无需 Electron)
  *
  * 1) 版本比较 compareVersions:
  *    - 新/旧/相同 / v 前缀归一化 / 预发布 tag (v1.2.3-beta.1) 解析 / 非语义化回退
@@ -218,7 +218,7 @@ section('检查器: 检查开关 (autoCheck) 与定时器');
 // ================= 静态断言 =================
 section('静态断言: main.js (更新检查接入)');
 {
-  check('UPDATE_CHECK_CONFIG 常量 (真实仓库 iiiweiii/NimbusSSH)', /UPDATE_CHECK_CONFIG\s*=\s*\{[\s\S]*?owner:\s*['"]iiiweiii['"][\s\S]*?repo:\s*['"]NimbusSSH['"]/.test(mainSrc));
+  check('UPDATE_CHECK_CONFIG 常量 (真实仓库 iiiweiii/FgmSSH)', /UPDATE_CHECK_CONFIG\s*=\s*\{[\s\S]*?owner:\s*['"]iiiweiii['"][\s\S]*?repo:\s*['"]FgmSSH['"]/.test(mainSrc));
   check('settings.json 全局设置 (autoCheckUpdate)', /SETTINGS_FILE\s*=\s*path\.join\(app\.getPath\(['"]userData['"]\),\s*['"]settings\.json['"]\)/.test(mainSrc));
   check('loadGlobalSettings 默认 autoCheckUpdate=true', /autoCheckUpdate:\s*parsed\.autoCheckUpdate\s*!==\s*false/.test(mainSrc));
   check('startUpdateChecker 在 app ready 调用', /startUpdateChecker\(\);/.test(mainSrc));

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - Roadmap 第一梯队 ③ (M) 文本编辑增强 测试 (node 直跑, 无需 Electron)
+ * FgmSSH - Roadmap 第一梯队 ③ (M) 文本编辑增强 测试 (node 直跑, 无需 Electron)
  *
  * 1) 语法高亮 tokenizer (src/editor-highlight.js):
  *    - 各语言关键词高亮 (sh/js/py/json/yml/md)

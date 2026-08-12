@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 主题控制模块 (theme)
+ * FgmSSH - 主题控制模块 (theme)
  * ============================================================
  * 职责 (Roadmap P2, 纯前端增量):
  *   - 三态主题: 'light' (强制浅色) / 'dark' (强制深色) / 'auto' (跟随系统 prefers-color-scheme)。
@@ -43,8 +43,12 @@
     auto: '◐',
   };
 
-  // xterm 主题: dark 与 renderer.js createTerminal() 现有深色主题完全一致 (回归不破坏);
-  // light 为白底深字 + VSCode Light 风格 ANSI 16 色。
+  // xterm 主题: dark 与 renderer.js createTerminal() 的 DEFAULT_TERM_THEME 完全一致
+  // (回归不破坏); light 为白底深字 + VSCode Light 风格 ANSI 16 色。
+  // 可读性契约 (v1.1.0 修复「浅色主题终端白字看不清」): 浅色背景 #ffffff 下,
+  //   - white/brightWhite 必须是深灰/近黑 (不得为纯白 #ffffff): white=#24292f / brightWhite=#6e7781
+  //   - black/brightBlack 用中灰 (纯黑太刺眼): black=#24292f / brightBlack=#57606a
+  //   - 其余亮色系 (red/green/yellow/blue/magenta/cyan) 均为 VSCode Light 深色调, 白底可读。
   const XTERM_THEMES = {
     dark: {
       background: '#0e1116',

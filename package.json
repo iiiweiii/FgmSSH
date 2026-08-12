@@ -1,7 +1,7 @@
 {
-  "name": "nimbus-ssh",
-  "productName": "NimbusSSH",
-  "version": "1.0.0",
+  "name": "fgm-ssh",
+  "productName": "FgmSSH",
+  "version": "1.1.0",
   "description": "现代化界面的 SSH 连接客户端 (Windows)",
   "main": "main.js",
   "scripts": {
@@ -22,8 +22,8 @@
     "mammoth": "^1.12.1"
   },
   "build": {
-    "appId": "com.nimbus.ssh",
-    "productName": "NimbusSSH",
+    "appId": "com.fgm.ssh",
+    "productName": "FgmSSH",
     "directories": {
       "output": "dist"
     },
@@ -36,7 +36,7 @@
       "signAndEditExecutable": false
     },
     "portable": {
-      "artifactName": "NimbusSSH-${version}-portable.exe"
+      "artifactName": "FgmSSH-${version}-portable.exe"
     },
     "files": [
       "main.js",

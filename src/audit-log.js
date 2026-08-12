@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 操作日志模块 (audit-log)
+ * FgmSSH - 操作日志模块 (audit-log)
  * ============================================================
  * 职责:
  *   - 统一收集关键操作 (连接/SFTP/文档/预览等) 为结构化 JSON 日志
@@ -31,7 +31,7 @@ const os = require('os');
 const ALLOWED_FIELDS = ['ts', 'level', 'user', 'session', 'type', 'target', 'result', 'detail'];
 
 // 未调用 initAuditLog 前的兜底目录 (main.js 总会显式传入 userData/logs)
-const DEFAULT_LOG_DIR = path.join(os.tmpdir(), 'nimbusssh-audit');
+const DEFAULT_LOG_DIR = path.join(os.tmpdir(), 'fgmssh-audit');
 
 let logDir = null;          // 日志目录 (initAuditLog 设置)
 let writeQueue = Promise.resolve(); // 串行写入队列 (保证顺序 + 不交错)

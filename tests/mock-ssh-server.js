@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 测试用 SSH 服务器
+ * FgmSSH 测试用 SSH 服务器
  * 基于 ssh2 的 Server API, 模拟一台真实 Linux 服务器:
  * - 密码认证: testuser / testpass123
  * - shell 交互: 模拟常见 Linux 命令输出
@@ -48,7 +48,7 @@ const server = new Server({ hostKeys: [HOST_KEY] }, (client) => {
       client.on('session', (accept) => {
         const session = accept();
 
-        // shell (PTY) 会话 - 与 NimbusSSH main.js 的 conn.shell() 对应
+        // shell (PTY) 会话 - 与 FgmSSH main.js 的 conn.shell() 对应
         // 处理 PTY 请求 (真实 Linux 服务器会自动响应 pty-req)
         session.on('pty', (accept, reject, info) => {
           console.log('[server] pty requested:', info.term, info.cols + 'x' + info.rows);
@@ -93,6 +93,6 @@ const server = new Server({ hostKeys: [HOST_KEY] }, (client) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[server] NimbusSSH 测试 SSH 服务器已启动: ssh://testuser@127.0.0.1:${PORT} (密码: testpass123)`);
+  console.log(`[server] FgmSSH 测试 SSH 服务器已启动: ssh://testuser@127.0.0.1:${PORT} (密码: testpass123)`);
   console.log('[server] 等待连接...');
 });

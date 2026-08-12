@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 操作日志面板关闭按钮位置回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 操作日志面板关闭按钮位置回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/audit-closebtn-test.js
  * 需求 (Roadmap 任务 1): 关闭按钮与「操作日志」标题同行右侧 (右上角), 符合常规弹窗交互。
  * 实现: 关闭按钮放入 .audit-header-actions (h3 的同行右侧), .modal-header flex

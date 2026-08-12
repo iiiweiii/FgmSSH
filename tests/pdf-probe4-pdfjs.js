@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - PDF 方案 B (pdfjs-dist) 技术实测
+ * FgmSSH - PDF 方案 B (pdfjs-dist) 技术实测
  *
  * 目的: 验证 pdfjs-dist 在 Electron 31.7.7 + 本项目 CSP 约束下能否正常渲染 PDF:
  *   - CSP script-src 'self' (模块动态 import 来自 node_modules 相对路径)

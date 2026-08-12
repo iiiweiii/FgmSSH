@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - QA 补充验证 (Roadmap 第一梯队③ / 第三梯队① 新增功能)
+ * FgmSSH - QA 补充验证 (Roadmap 第一梯队③ / 第三梯队① 新增功能)
  * 覆盖任务书中「补充验证」清单:
  *  ① find 命令构造: 注入关键字 / 空格 / 引号 / maxdepth 钳制 / 输出解析 (多行/ANSI/空)
  *  ② compareVersions: 预发布 / v2.0 vs v1.9.9 / 非法输入; fetch 抛错/超时 -> 静默 + failure 审计;

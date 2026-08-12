@@ -1,4 +1,4 @@
-# NimbusSSH 候选功能规划清单（Feature Roadmap）
+# FgmSSH 候选功能规划清单（Feature Roadmap）
 
 > 定位：单人 IT 使用 + Windows portable 绿色单文件交付（~80MB）
 > 原则：不脱离场景堆功能；能复用现有 SSH/SFTP 通道的优先；工作量按"增量开发"诚实评估。
@@ -12,7 +12,7 @@
 | # | 功能 | 现状一句话 |
 |---|------|-----------|
 | 1 | 多会话标签页终端 | xterm 终端 + 多标签，支持终端 `cd`→SFTP 面板联动、面板右键 `cd`→终端同步（双向 cd-sync）。 |
-| 2 | 连接列表抽屉 | 保存连接配置（密码/私钥/agent 三种认证）、搜索、删除；配置明文落盘 `%APPDATA%/NimbusSSH/connections.json`。 |
+| 2 | 连接列表抽屉 | 保存连接配置（密码/私钥/agent 三种认证）、搜索、删除；配置明文落盘 `%APPDATA%/FgmSSH/connections.json`。 |
 | 3 | SFTP 文件面板 | 浏览/上传/下载/文件夹 ZIP 打包下载/新建/重命名/删除 + 右键菜单 + 传输进度条。 |
 | 4 | 图片预览器 | SFTP 内图片预览，支持左右切换/缩放/旋转/另存为。 |
 | 5 | 内置文档查看器 | PDF（pdfjs-dist）/Word（mammoth）/TXT 打开；TXT 可编辑并保存回远端，PDF/Word 只读。 |

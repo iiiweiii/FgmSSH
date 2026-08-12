@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 渲染进程
+ * FgmSSH - 渲染进程
  * 负责: 界面交互 / xterm 终端渲染 / 标签页管理 / IPC 桥接 / 侧边栏 SFTP 面板 / 图片预览
  */
 
@@ -358,6 +358,34 @@ function renderConnectionList() {
 }
 
 // ============ 终端实例管理 ============
+// 默认 xterm 主题 (深色): 与 src/theme.js XTERM_THEMES.dark 完全一致 (回归不破坏),
+// 仅在主题控制器未初始化 / 异常时作为 fallback (与旧版硬编码行为一致)。
+const DEFAULT_TERM_THEME = {
+  background: '#0e1116',
+  foreground: '#e6eaf0',
+  cursor: '#4f8cff',
+  cursorAccent: '#0e1116',
+  selectionBackground: 'rgba(79, 140, 255, 0.35)',
+  black: '#0e1116', red: '#ff5d5d', green: '#3ecf8e', yellow: '#f5b64c',
+  blue: '#5f9aff', magenta: '#c792ea', cyan: '#4dd0e1', white: '#e6eaf0',
+  brightBlack: '#5c6673', brightRed: '#ff8a8a', brightGreen: '#6ee7b7',
+  brightYellow: '#ffd87d', brightBlue: '#8ab8ff', brightMagenta: '#dcb0ff',
+  brightCyan: '#8be9fd', brightWhite: '#ffffff',
+};
+
+// 当前生效的 xterm 主题: 跟随主题控制器 (themeController.currentTheme() ->
+// window.NimbusTheme.XTERM_THEMES[theme])。v1.1.0 修复: 浅色主题下新建终端不再硬编码
+// 深色, 而是使用浅色主题 (白底深字, ANSI 16 色可读); 主题未初始化/异常时回退深色。
+function currentXtermTheme() {
+  if (typeof window === 'undefined' || !window.NimbusTheme || !themeController) {
+    return DEFAULT_TERM_THEME;
+  }
+  const themes = window.NimbusTheme.XTERM_THEMES;
+  if (!themes) return DEFAULT_TERM_THEME;
+  const theme = themeController.currentTheme();
+  return themes[theme] || themes.dark || DEFAULT_TERM_THEME;
+}
+
 function createTerminal() {
   const term = new window.Terminal({
     fontFamily: '"Cascadia Code", "Consolas", "JetBrains Mono", monospace',
@@ -365,18 +393,7 @@ function createTerminal() {
     lineHeight: 1.25,
     cursorBlink: true,
     cursorStyle: 'block',
-    theme: {
-      background: '#0e1116',
-      foreground: '#e6eaf0',
-      cursor: '#4f8cff',
-      cursorAccent: '#0e1116',
-      selectionBackground: 'rgba(79, 140, 255, 0.35)',
-      black: '#0e1116', red: '#ff5d5d', green: '#3ecf8e', yellow: '#f5b64c',
-      blue: '#5f9aff', magenta: '#c792ea', cyan: '#4dd0e1', white: '#e6eaf0',
-      brightBlack: '#5c6673', brightRed: '#ff8a8a', brightGreen: '#6ee7b7',
-      brightYellow: '#ffd87d', brightBlue: '#8ab8ff', brightMagenta: '#dcb0ff',
-      brightCyan: '#8be9fd', brightWhite: '#ffffff',
-    },
+    theme: currentXtermTheme(),
     scrollback: 5000,
     allowProposedApi: true,
     convertEol: false,
@@ -3507,49 +3524,21 @@ function renderMonitorCards(res, grid) {
     }
   }
 
-  // ---- 磁盘 (仅展示白名单挂载点: /、/root/autodl-tmp、/root/autodl-fs) ----
-  // 白名单单一事实源 = src/health-parser.js DISK_MOUNT_WHITELIST (按用户服务器需求配置,
-  // 改解析层一处即可), 经 monitorFetch IPC 以 res.diskMountWhitelist 透传到渲染层;
-  // 解析层已按白名单预过滤 (防 Top-N 截断白名单挂载点) 并返回归一化 mounted, 此处先对
-  // mounted 再做一次归一化 (与解析层 normalizeMountPath 语义一致) 后执行防御性过滤,
-  // 保证"其余挂载点一律不显示"。res.diskMountWhitelist 缺失时退回不过滤 (兼容旧响应)。
+  // ---- 磁盘 (全部挂载点按使用率降序取前 5 条, 解析层已截断; 不按白名单过滤) ----
+  // v1.1.0 起恢复 v21 之前原逻辑: 解析层 fetchMonitorData 直接返回 parseDf(disks, 5)
+  // (全部 rows 按 Use% 降序截断 5), 此处直接渲染 res.disks, 不再有白名单过滤逻辑。
+  // mounted 再做一次归一化 (与解析层 normalizeMountPath 语义一致), 兼容旧版主进程响应。
   const disks = (Array.isArray(res.disks) ? res.disks : []).map((d) => ({ ...d, mounted: normalizeMountPath(d.mounted) }));
-  const DISK_MOUNT_WHITELIST = (res && Array.isArray(res.diskMountWhitelist)) ? res.diskMountWhitelist : null;
-  const whitelistedDisks = DISK_MOUNT_WHITELIST
-    ? disks.filter((d) => DISK_MOUNT_WHITELIST.includes(d.mounted))
-    : disks;
-  // 未匹配白名单调试区: 数据源 = 解析层同一批 df rows 划分出的白名单外挂载点
-  // (res.diskUnmatched, 全量不截断)。此处归一化 + 防御性剔除白名单内挂载点 (兼容旧响应/
-  // 异常数据), 仅在存在未匹配挂载点时渲染 (全部命中白名单 -> 整个区域隐藏, 保持简洁)。
-  const unmatchedDisks = (Array.isArray(res.diskUnmatched) ? res.diskUnmatched : [])
-    .map((d) => ({ ...d, mounted: normalizeMountPath(d.mounted) }))
-    .filter((d) => d.mounted && (!DISK_MOUNT_WHITELIST || !DISK_MOUNT_WHITELIST.includes(d.mounted)));
-  if (whitelistedDisks.length > 0 || errors.df || unmatchedDisks.length > 0) {
-    let diskHtml = '';
-    if (whitelistedDisks.length > 0) {
-      diskHtml = whitelistedDisks.map((d) => `
+  if (disks.length > 0 || errors.df) {
+    const diskHtml = disks.length > 0
+      ? disks.map((d) => `
         <div class="monitor-disk-row">
           <span class="monitor-disk-mount" title="${escapeHtml(d.mounted)}">${escapeHtml(d.mounted)}</span>
           <span class="monitor-disk-detail">${escapeHtml(d.size)} / ${escapeHtml(d.used)} / ${escapeHtml(d.avail)}</span>
           <span class="monitor-disk-pct">${escapeHtml(d.usePct)}</span>
           <span class="monitor-disk-bar${pctBarClass(d.usedPct)}"><i style="width:${d.usedPct !== null ? Math.min(100, Math.max(0, d.usedPct)) : 0}%"></i></span>
-        </div>`).join('');
-    } else if (errors.df) {
-      diskHtml = errorNote('df');
-    }
-    // 未匹配白名单调试区 (紧跟白名单列表之后, 弱化样式, 供排查 df 实际输出):
-    // 用户一眼即可看出 df 里到底有没有 /root/autodl-tmp / 挂载路径名与白名单是否一致。
-    if (unmatchedDisks.length > 0) {
-      diskHtml += `
-        <div class="monitor-disk-unmatched">
-          <div class="monitor-disk-unmatched-title">未匹配白名单（df 实际输出，供排查）</div>
-          ${unmatchedDisks.map((d) => `
-            <div class="monitor-disk-unmatched-row" title="${escapeHtml(d.mounted)}">
-              <span class="monitor-disk-unmatched-mount">${escapeHtml(d.mounted)}</span>
-              <span class="monitor-disk-unmatched-pct">${escapeHtml(d.usePct || (d.usedPct !== null && d.usedPct !== undefined ? d.usedPct + '%' : ''))}</span>
-            </div>`).join('')}
-        </div>`;
-    }
+        </div>`).join('')
+      : errorNote('df');
     sections.push(`<div class="monitor-card wide"><h4>磁盘</h4>${diskHtml}</div>`);
   }
 
@@ -3960,7 +3949,7 @@ async function init() {
   // 初始: SFTP 面板显示占位
   showSftpFor(null);
 
-  toast('欢迎使用 NimbusSSH', 'info');
+  toast('欢迎使用 FgmSSH', 'info');
 }
 
 window.addEventListener('DOMContentLoaded', init);

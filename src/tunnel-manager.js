@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 隧道/端口转发管理器 (纯 node, 无 Electron 依赖)
+ * FgmSSH - 隧道/端口转发管理器 (纯 node, 无 Electron 依赖)
  * ============================================================
  * 职责:
  *   - 以「会话」为粒度维护隧道注册表: sessionKey -> Map<tunnelId, record>

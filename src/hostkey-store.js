@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - 主机密钥指纹存储模块 (hostkey-store, TOFU)
+ * FgmSSH - 主机密钥指纹存储模块 (hostkey-store, TOFU)
  * ============================================================
  * 职责 (Roadmap 第一梯队 ②, 纯 node, 主进程使用):
  *   - 维护 known_hosts 指纹库 (userData/known_hosts.json), 实现 TOFU

@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 常用命令收藏模块回归测试 (node 直跑, 不依赖 DOM/Electron)
+ * FgmSSH 常用命令收藏模块回归测试 (node 直跑, 不依赖 DOM/Electron)
  * 运行: node tests/favcommands-test.js
  * 覆盖:
  *   1. localStorage 读写往返 (add -> load, 持久化到 mock storage)

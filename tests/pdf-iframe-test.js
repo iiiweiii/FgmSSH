@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - PDF 方案 A (iframe 内嵌 Chromium 内置 PDF viewer) 技术实测
+ * FgmSSH - PDF 方案 A (iframe 内嵌 Chromium 内置 PDF viewer) 技术实测
  *
  * 目的: 验证 <iframe src="nimbus-doc://xxx.pdf"> 在 Electron 31 (Chromium 126) 中
  *       是否触发内置 PDF 查看器 (而非下载/空白), 以决定文档查看器 PDF 渲染方案:

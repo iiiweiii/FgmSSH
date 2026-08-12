@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 连接测试客户端
+ * FgmSSH 连接测试客户端
  * 复用与 src/main.js 中 createSSHSession() 完全相同的 ssh2 调用方式:
  * - Client 连接 + password 认证
  * - conn.shell({ term, rows, cols }) 打开 PTY
@@ -22,7 +22,7 @@ const CONFIG = {
 const RESULTS = [];
 let outputBuffer = '';
 let currentCmd = null;
-let cmdQueue = ['pwd', 'whoami', 'uname -a', 'echo nimbus-ssh-hello', 'ls', 'exit'];
+let cmdQueue = ['pwd', 'whoami', 'uname -a', 'echo fgm-ssh-hello', 'ls', 'exit'];
 let failCount = 0;
 
 function log(msg) {
@@ -90,7 +90,7 @@ function processOutput() {
     'pwd': ['/home/testuser'],
     'whoami': ['testuser'],
     'uname -a': ['Linux', 'x86_64'],
-    'echo nimbus-ssh-hello': ['nimbus-ssh-hello'],
+    'echo fgm-ssh-hello': ['fgm-ssh-hello'],
     'ls': ['Desktop', 'projects'],
   };
 
@@ -129,13 +129,13 @@ conn.on('close', () => finish());
 
 function finish() {
   const total = Object.keys({
-    'pwd': 1, 'whoami': 1, 'uname -a': 1, 'echo nimbus-ssh-hello': 1, 'ls': 1,
+    'pwd': 1, 'whoami': 1, 'uname -a': 1, 'echo fgm-ssh-hello': 1, 'ls': 1,
   }).length;
   log('');
   log('==================== 测试结果 ====================');
   if (failCount === 0) {
     log(`🎉 全部通过! ${total} 项命令断言全部 PASS`);
-    log('✅ NimbusSSH 的 SSH 连接链路 (认证/PTY/命令交互) 工作正常');
+    log('✅ FgmSSH 的 SSH 连接链路 (认证/PTY/命令交互) 工作正常');
   } else {
     log(`⚠️ 有 ${failCount} 项断言失败`);
   }

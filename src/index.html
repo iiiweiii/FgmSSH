@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <!-- CSP: nimbus-doc: 加入 connect-src (fetch 文档临时文件); worker-src blob: 供 pdfjs-dist blob worker 使用 -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; img-src 'self' nimbus-preview: blob: data:; connect-src 'self' nimbus-preview: nimbus-doc: blob: data:; worker-src 'self' blob:;" />
-  <title>NimbusSSH</title>
+  <title>FgmSSH</title>
   <!-- xterm 官方样式 (必须手动引入): 含 .xterm-viewport{position:absolute} / .xterm-screen{position:relative}
        等核心定位规则; 缺失会导致 viewport 退化为 static 文档流, 把 screen 整体下推 (终端内容下移真因) -->
   <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css" />
@@ -21,7 +21,7 @@
           </svg>
         </div>
         <div class="brand-text">
-          <span class="brand-name">NimbusSSH</span>
+          <span class="brand-name">FgmSSH</span>
           <span class="brand-sub">Secure Shell</span>
         </div>
       </div>
@@ -196,7 +196,7 @@
             <rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 10h5M7 14h8"/>
           </svg>
         </div>
-        <h2>欢迎使用 NimbusSSH</h2>
+        <h2>欢迎使用 FgmSSH</h2>
         <p>点击下方按钮或按 <kbd>Ctrl</kbd> + <kbd>N</kbd> 新建 SSH 连接</p>
         <button class="btn-new btn-new-lg" id="btnEmptyNew">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>

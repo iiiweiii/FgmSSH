@@ -187,7 +187,7 @@ async function run() {
     assert.strictEqual(r.unmatched.length, 6, 'unmatched 不截断 (6 条非白名单全保留)');
   });
 
-  test('A7: fetchMonitorData 透传 diskUnmatched (与 parseDfWithUnmatched 划分一致)', async () => {
+  test('A7: fetchMonitorData 不再透传 diskUnmatched/diskMountWhitelist (v1.1.0)', async () => {
     const C = parser.MONITOR_COMMANDS;
     const dfOut = 'Filesystem      Size  Used Avail Use% Mounted on\n' +
                   '/dev/sda1  100G  90G  10G  90% /boot\n' +
@@ -207,42 +207,42 @@ async function run() {
       throw new Error('mock: 未知命令 ' + command);
     };
     const data = await fetchMonitorData({ exec, identity: 'root@1.2.3.4' });
-    const expect = parseDfWithUnmatched(dfOut, undefined, WL);
-    assert.deepStrictEqual(data.disks, expect.matched, 'fetchMonitorData.disks 应等于 matched');
-    assert.deepStrictEqual(data.diskUnmatched, expect.unmatched, 'fetchMonitorData.diskUnmatched 应等于 unmatched (透传正确)');
-    assert.deepStrictEqual(data.diskUnmatched.map((d) => d.mounted), ['/boot', '/tmp'], 'diskUnmatched 内容正确');
+    assert.strictEqual(data.diskUnmatched, undefined, 'diskUnmatched 字段应已移除 (v1.1.0 磁盘恢复 Top5 原逻辑)');
+    assert.strictEqual(data.diskMountWhitelist, undefined, 'diskMountWhitelist 字段应已移除');
+    // 全部挂载点按 Use% 降序, 5 条全量 (无过滤)
+    assert.deepStrictEqual(
+      data.disks.map((d) => d.mounted),
+      ['/root/autodl-tmp', '/boot', '/root/autodl-fs', '/tmp', '/'],
+      'disks 应按 Use% 降序 (92,90,85,80,20), 不过滤白名单'
+    );
   });
 
-  // ================= B. 调试区渲染 (真实 renderer 源码块) =================
-  test('B1: unmatched.length>0 -> 渲染调试区; =0 -> 整个区域隐藏', () => {
+  // ================= B. 磁盘卡片渲染 (真实 renderer 源码块; v1.1.0 恢复 Top5 原逻辑) =================
+  test('B1: disks 直接渲染为行; diskUnmatched/diskMountWhitelist 被忽略 (不再渲染调试区)', () => {
     const renderDisk = renderDiskHarness();
     const res = {
-      disks: [{ filesystem: 'x', size: '10G', used: '9G', avail: '1G', usePct: '90%', usedPct: 90, mounted: '/' }],
+      disks: [
+        { filesystem: 'x', size: '10G', used: '9G', avail: '1G', usePct: '90%', usedPct: 90, mounted: '/' },
+        { filesystem: 'y', size: '20G', used: '10G', avail: '10G', usePct: '50%', usedPct: 50, mounted: '/boot' },
+      ],
+      // 旧响应字段 (兼容/历史): 即使存在也不再渲染调试区
       diskMountWhitelist: WL,
-      diskUnmatched: [{ filesystem: 'y', size: '20G', used: '10G', avail: '10G', usePct: '50%', usedPct: 50, mounted: '/boot' }],
+      diskUnmatched: [{ filesystem: 'z', size: '30G', used: '20G', avail: '10G', usePct: '70%', usedPct: 70, mounted: '/old' }],
     };
-    const sections1 = renderDisk(res, {});
-    const html1 = sections1.join('');
-    assert.ok(html1.includes('monitor-disk-unmatched'), '存在未匹配时调试区应渲染');
-    assert.ok(html1.includes('未匹配白名单'), '调试区标题应出现');
-    assert.ok(html1.includes('/boot'), '未匹配挂载点应显示');
-    // 全命中 -> 隐藏
-    const res2 = {
-      disks: [{ filesystem: 'x', size: '10G', used: '9G', avail: '1G', usePct: '90%', usedPct: 90, mounted: '/' }],
-      diskMountWhitelist: WL,
-      diskUnmatched: [],
-    };
-    const html2 = renderDisk(res2, {}).join('');
-    assert.ok(!html2.includes('monitor-disk-unmatched'), '全命中时调试区应隐藏');
-    assert.ok(html2.includes('monitor-disk-row'), '白名单主区应保留');
+    const html = renderDisk(res, {}).join('');
+    assert.ok(!html.includes('monitor-disk-unmatched'), '不得再渲染未匹配调试区');
+    assert.ok(!html.includes('未匹配白名单'), '不得再出现调试区标题');
+    assert.strictEqual((html.match(/monitor-disk-row/g) || []).length, 2, '应按 disks 数组渲染 2 行');
+    assert.ok(html.includes('/boot'), '非白名单挂载点也直接显示 (不过滤)');
+    // disks 为空 + 无 errors.df -> 卡片不渲染
+    const html2 = renderDisk({ disks: [], diskUnmatched: [{ mounted: '/boot', usePct: '50%', usedPct: 50 }] }, {}).join('');
+    assert.ok(!html2.includes('monitor-card'), 'disks 为空且无 errors.df 时不应渲染磁盘卡片');
   });
 
   test('B2: escapeHtml 转义 (注入 <script> 不被解析)', () => {
     const renderDisk = renderDiskHarness();
     const res = {
-      disks: [],
-      diskMountWhitelist: WL,
-      diskUnmatched: [
+      disks: [
         { filesystem: 'y', size: '20G', used: '10G', avail: '10G', usePct: '<script>alert(1)</script>', usedPct: 50, mounted: '<img src=x onerror=alert(2)>' },
       ],
     };
@@ -253,36 +253,31 @@ async function run() {
     assert.ok(html.includes('&lt;img src=x onerror=alert(2)&gt;'), 'mounted 应被 escapeHtml');
   });
 
-  test('B3: 不破坏白名单主区 (主区行 + 详情 + 百分比 + 进度条均保留)', () => {
+  test('B3: 磁盘行完整字段 (mount + size/used/avail + 百分比 + 进度条) 均保留', () => {
     const renderDisk = renderDiskHarness();
     const res = {
       disks: [
         { filesystem: 'a', size: '500G', used: '92G', avail: '408G', usePct: '92%', usedPct: 92, mounted: '/root/autodl-tmp' },
         { filesystem: 'b', size: '50G', used: '10G', avail: '40G', usePct: '20%', usedPct: 20, mounted: '/' },
       ],
-      diskMountWhitelist: WL,
-      diskUnmatched: [{ filesystem: 'y', size: '20G', used: '10G', avail: '10G', usePct: '50%', usedPct: 50, mounted: '/boot' }],
     };
     const html = renderDisk(res, {}).join('');
-    // 白名单主区 2 行完整字段
-    assert.strictEqual((html.match(/monitor-disk-row/g) || []).length, 2, '白名单主区应渲染 2 行');
-    assert.ok(html.includes('/root/autodl-tmp'), '主区挂载点显示');
-    assert.ok(html.includes('500G') && html.includes('92G') && html.includes('408G'), '主区 size/used/avail 显示');
-    assert.ok(html.includes('92%'), '主区 usePct 显示');
-    assert.ok(html.includes('monitor-disk-bar'), '主区进度条保留');
-    // 调试区在最后 (主区之后)
-    assert.ok(html.indexOf('monitor-disk-unmatched') > html.indexOf('monitor-disk-row'), '调试区应位于主区之后');
+    assert.strictEqual((html.match(/monitor-disk-row/g) || []).length, 2, '应渲染 2 行');
+    assert.ok(html.includes('/root/autodl-tmp'), '挂载点显示');
+    assert.ok(html.includes('500G') && html.includes('92G') && html.includes('408G'), 'size/used/avail 显示');
+    assert.ok(html.includes('92%'), 'usePct 显示');
+    assert.ok(html.includes('monitor-disk-bar'), '进度条保留');
+    assert.ok(html.includes('<h4>磁盘</h4>'), '卡片标题为磁盘');
   });
 
-  test('B4: 仅存在未匹配 (无白名单盘) -> 卡片仍渲染; errors.df 兜底保留', () => {
+  test('B4: disks 为空 + errors.df -> 渲染错误提示兜底', () => {
     const renderDisk = renderDiskHarness();
-    const html = renderDisk({ disks: [], diskMountWhitelist: WL, diskUnmatched: [{ mounted: '/boot', usePct: '50%', usedPct: 50 }] }, {}).join('');
-    assert.ok(html.includes('monitor-card'), '仅有未匹配时磁盘卡片仍应渲染 (供排查)');
-    assert.ok(html.includes('monitor-disk-unmatched'), '调试区应显示');
-    // errors.df 兜底: 无白名单盘且无未匹配, 有 errors.df -> 渲染错误提示
-    const html2 = renderDisk({ disks: [], diskMountWhitelist: WL, diskUnmatched: [] }, { df: 'df 命令失败' }).join('');
-    assert.ok(html2.includes('df 命令失败'), 'errors.df 兜底应渲染');
-    assert.ok(html2.includes('monitor-na'), '错误提示 class 存在');
+    const html = renderDisk({ disks: [] }, { df: 'df 命令失败' }).join('');
+    assert.ok(html.includes('monitor-card'), 'errors.df 存在时磁盘卡片应渲染');
+    assert.ok(html.includes('df 命令失败'), 'errors.df 兜底应渲染');
+    // 无 disks 且无 errors.df -> 不渲染
+    const html2 = renderDisk({ disks: [] }, {}).join('');
+    assert.ok(!html2.includes('磁盘'), '无数据无错误时不渲染磁盘卡片');
   });
 
   // ================= C. 诊断日志门控 =================

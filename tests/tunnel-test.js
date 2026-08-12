@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 隧道/端口转发功能回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 隧道/端口转发功能回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/tunnel-test.js
  * 覆盖 (Roadmap ② SSH 隧道/端口转发管理面板):
  *   1. 隧道配置随连接持久化 (tunnels 字段经 credential-store save/load 往返不丢)

@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - 更新检查真实仓库配置 静态断言测试 (node 直跑, 无 Electron)
+ * FgmSSH - 更新检查真实仓库配置 静态断言测试 (node 直跑, 无 Electron)
  * 运行: node tests/updatecheck-config-test.js
  *
  * 背景 (Roadmap 第一梯队 ③, S): UPDATE_CHECK_CONFIG 从占位符 (nimbus-ssh/nimbus-ssh)
- * 替换为真实 GitHub 仓库 (iiiweiii/NimbusSSH)。发布新版本时创建 tag 即触发更新提醒。
+ * 替换为真实 GitHub 仓库 (iiiweiii/FgmSSH; v1.1.0 软件更名)。
+ * 发布新版本时创建 tag 即触发更新提醒。
  *
  * 覆盖:
- *   1. main.js UPDATE_CHECK_CONFIG.owner === 'iiiweiii' / repo === 'NimbusSSH'
- *   2. main.js / src/update-check.js 不再含 'nimbus-ssh' 占位 owner/repo (配置引用)
+ *   1. main.js UPDATE_CHECK_CONFIG.owner === 'iiiweiii' / repo === 'FgmSSH'
+ *   2. main.js / src/update-check.js 不再含 'fgm-ssh' 占位 owner/repo (配置引用)
  *   3. settings.json autoCheckUpdate 开关链路 (settings:load/save + applyUpdateCheckSetting) 不受影响
  *   4. 行为一致性: startUpdateChecker 仍从 UPDATE_CHECK_CONFIG 读取 owner/repo 传给检查器
  *   5. 运行时行为: createUpdateChecker 使用注入 owner/repo 构造 GitHub API URL (真实仓库)
@@ -50,10 +51,10 @@ async function run() {
     check('UPDATE_CHECK_CONFIG 常量存在', !!m);
     const block = (m && m[1]) || '';
     check('owner = iiiweiii', /owner:\s*['"]iiiweiii['"]/.test(block), block.trim());
-    check('repo = NimbusSSH', /repo:\s*['"]NimbusSSH['"]/.test(block), block.trim());
-    check('不再含 nimbus-ssh 占位', !/nimbus-ssh/.test(block), block.trim());
+    check('repo = FgmSSH', /repo:\s*['"]FgmSSH['"]/.test(block), block.trim());
+    check('不再含 fgm-ssh 占位', !/fgm-ssh/.test(block), block.trim());
     check('不再含 TODO 占位注释', !/TODO/.test(block), block.trim());
-    check('配置注释指向真实 GitHub 仓库', /github\.com\/iiiweiii\/NimbusSSH/.test(mainSrc.slice(0, mainSrc.indexOf('UPDATE_CHECK_CONFIG'))));
+    check('配置注释指向真实 GitHub 仓库', /github\.com\/iiiweiii\/FgmSSH/.test(mainSrc.slice(0, mainSrc.indexOf('UPDATE_CHECK_CONFIG'))));
     check('注释说明创建 tag 触发提醒', /tag/.test(mainSrc.slice(0, mainSrc.indexOf('UPDATE_CHECK_CONFIG'))));
   }
 
@@ -61,8 +62,8 @@ async function run() {
   {
     const d = uc.DEFAULT_CONFIG;
     check('DEFAULT_CONFIG.owner = iiiweiii', d.owner === 'iiiweiii', d.owner);
-    check('DEFAULT_CONFIG.repo = NimbusSSH', d.repo === 'NimbusSSH', d.repo);
-    check('update-check.js 源码不再以 nimbus-ssh 作为 owner/repo', !/owner:\s*['"]nimbus-ssh['"]|repo:\s*['"]nimbus-ssh['"]/.test(updateSrc));
+    check('DEFAULT_CONFIG.repo = FgmSSH', d.repo === 'FgmSSH', d.repo);
+    check('update-check.js 源码不再以 fgm-ssh 作为 owner/repo', !/owner:\s*['"]fgm-ssh['"]|repo:\s*['"]fgm-ssh['"]/.test(updateSrc));
   }
 
   section('settings autoCheckUpdate 开关链路不受影响');
@@ -78,17 +79,17 @@ async function run() {
   section('运行时行为: 检查器使用注入的真实仓库 URL');
   {
     const checker = uc.createUpdateChecker({
-      owner: 'iiiweiii', repo: 'NimbusSSH',
+      owner: 'iiiweiii', repo: 'FgmSSH',
       getVersion: () => '1.0.0',
       fetchFn: async () => ({ ok: false, status: 404 }),
     });
     const apiUrl = checker.apiUrl();
     const webUrl = checker.releasesUrl();
-    check('GitHub API URL 指向真实仓库', apiUrl === 'https://api.github.com/repos/iiiweiii/NimbusSSH/releases/latest', apiUrl);
-    check('Releases 页面 URL 指向真实仓库', webUrl === 'https://github.com/iiiweiii/NimbusSSH/releases', webUrl);
+    check('GitHub API URL 指向真实仓库', apiUrl === 'https://api.github.com/repos/iiiweiii/FgmSSH/releases/latest', apiUrl);
+    check('Releases 页面 URL 指向真实仓库', webUrl === 'https://github.com/iiiweiii/FgmSSH/releases', webUrl);
     // 版本逻辑: 当前 app 版本与最新 tag 相同 -> 不提示 (发布 v1.0.0 基线时不误报)
     const same = uc.createUpdateChecker({
-      owner: 'iiiweiii', repo: 'NimbusSSH',
+      owner: 'iiiweiii', repo: 'FgmSSH',
       getVersion: () => '1.0.0',
       fetchFn: async () => ({ ok: true, json: async () => ({ tag_name: 'v1.0.0', html_url: '' }) }),
     });
@@ -96,7 +97,7 @@ async function run() {
       check('tag 与当前版本相同 -> 不提示', res.ok === true && res.hasUpdate === false);
       // 未来更高 tag -> 提示
       const newer = uc.createUpdateChecker({
-        owner: 'iiiweiii', repo: 'NimbusSSH',
+        owner: 'iiiweiii', repo: 'FgmSSH',
         getVersion: () => '1.0.0',
         fetchFn: async () => ({ ok: true, json: async () => ({ tag_name: 'v1.1.0', html_url: '' }) }),
       });

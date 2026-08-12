@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 断点续传回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 断点续传回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/resume-test.js
  * 覆盖 (Roadmap 第一梯队 ② 断点续传):
  *   1. 下载续传: .part 检测 / 从 offset 继续 / 完成后改名 / 完成清理

@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 断线自动重连策略回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 断线自动重连策略回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/reconnect-test.js
  * 覆盖 (Roadmap 第一梯队 ① 断线自动重连):
  *   1. 指数退避序列: 1s/2s/4s/8s/16s/32s(上限封顶)

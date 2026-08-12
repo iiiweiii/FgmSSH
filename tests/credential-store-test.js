@@ -1,5 +1,5 @@
 /**
- * NimbusSSH 连接凭据加密存储模块回归测试 (node 直跑, 不依赖 Electron)
+ * FgmSSH 连接凭据加密存储模块回归测试 (node 直跑, 不依赖 Electron)
  * 运行: node tests/credential-store-test.js
  * 覆盖:
  *   1. encrypt/decrypt 往返 (明文可复原)

@@ -21,9 +21,9 @@ function check(name, fn) {
 
 const rendererSrc = fs.readFileSync(path.join(ROOT, 'src', 'renderer.js'), 'utf8');
 
-// ---- 1. 从 renderer.js 提取 createTerminal 的 theme: {...} 对象 ----
-const themeBlock = rendererSrc.match(/theme:\s*\{([\s\S]*?)\}\s*,\s*scrollback/);
-assert.ok(themeBlock, '未找到 createTerminal 的 theme 块');
+// ---- 1. 从 renderer.js 提取 DEFAULT_TERM_THEME 对象 (createTerminal 的深色 fallback) ----
+const themeBlock = rendererSrc.match(/const DEFAULT_TERM_THEME\s*=\s*\{([\s\S]*?)\}\s*;\n/);
+assert.ok(themeBlock, '未找到 DEFAULT_TERM_THEME 对象');
 const rendererThemeObj = {};
 {
   const varRe = /(\w+)\s*:\s*('[^']*'|"[^"]*")/g;
@@ -33,7 +33,7 @@ const rendererThemeObj = {};
   }
 }
 
-check('XTERM_THEMES.dark 与 renderer.js createTerminal 深色主题逐字一致 (深比较)', () => {
+check('XTERM_THEMES.dark 与 renderer.js DEFAULT_TERM_THEME 深色主题逐字一致 (深比较)', () => {
   const dark = theme.XTERM_THEMES.dark;
   assert.deepStrictEqual(
     Object.keys(dark).sort(),
@@ -43,6 +43,16 @@ check('XTERM_THEMES.dark 与 renderer.js createTerminal 深色主题逐字一致
   for (const k of Object.keys(dark)) {
     assert.strictEqual(dark[k], rendererThemeObj[k], '键 ' + k + ' 值不一致: theme.js=' + dark[k] + ' renderer.js=' + rendererThemeObj[k]);
   }
+});
+
+// createTerminal 主题跟随当前主题 (v1.1.0 修复浅色主题终端白字看不清):
+// theme 取 currentXtermTheme() -> XTERM_THEMES[currentTheme()], 未初始化回退 DEFAULT_TERM_THEME
+check('renderer.js createTerminal 使用 currentXtermTheme() 跟随当前主题 (不再硬编码深色)', () => {
+  assert.ok(rendererSrc.includes('function currentXtermTheme()'), '缺少 currentXtermTheme 函数');
+  assert.ok(/theme:\s*currentXtermTheme\(\)/.test(rendererSrc), 'createTerminal theme 应为 currentXtermTheme()');
+  assert.ok(rendererSrc.includes('XTERM_THEMES'), 'currentXtermTheme 应引用 XTERM_THEMES');
+  assert.ok(rendererSrc.includes('themeController.currentTheme()'), 'currentXtermTheme 应取当前主题');
+  assert.ok(rendererSrc.includes('DEFAULT_TERM_THEME'), '应保留深色 fallback');
 });
 
 check('XTERM_THEMES.light 关键值抽查 (白底深字 VSCode Light ANSI 16 色)', () => {

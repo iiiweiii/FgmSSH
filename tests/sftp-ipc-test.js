@@ -1,5 +1,5 @@
 /**
- * NimbusSSH SFTP IPC 层回归冒烟测试
+ * FgmSSH SFTP IPC 层回归冒烟测试
  * 背景: main.js 依赖 Electron, 无法在纯 node 中 require。
  *       本测试复刻 main.js 的「本地路径登记表」机制 (approvedLocalPaths),
  *       验证 上传/下载 的 对话框登记 → 传输消费 → 未登记拒绝 完整行为链路,

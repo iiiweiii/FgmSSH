@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NimbusSSH - 主机密钥指纹存储模块 (hostkey-store) 测试 (node 直跑, 无 Electron)
+ * FgmSSH - 主机密钥指纹存储模块 (hostkey-store) 测试 (node 直跑, 无 Electron)
  * 运行: node tests/hostkey-store-test.js
  *
  * 覆盖 (Roadmap 第一梯队 ②, TOFU 防中间人):

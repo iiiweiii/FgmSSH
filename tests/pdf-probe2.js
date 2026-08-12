@@ -1,5 +1,5 @@
 /**
- * NimbusSSH - PDF 内置 viewer 启用条件探针
+ * FgmSSH - PDF 内置 viewer 启用条件探针
  * 验证 Electron 31.7.7 内置 PDF viewer 的启用条件:
  *   P1: file:// 顶层 + plugins:true
  *   P2: nimbus-doc:// 顶层 + plugins:true
