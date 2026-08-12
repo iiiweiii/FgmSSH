@@ -1,0 +1,28 @@
+
+
+=== S1: file:// PDF 顶层导航 ===
+  frames: []
+  marker: plain
+  => PDF viewer 渲染: NO ❌
+
+=== S1b: loadURL(file://pdf) ===
+  => PDF viewer 渲染: NO ❌
+
+=== S2: file:// PDF 在 iframe 内 ===
+  frames: []
+  marker: S2
+  => PDF viewer 渲染: NO ❌
+
+=== S3: nimbus-doc:// PDF iframe (plugins:true) ===
+  frames: [
+  "nimbus-doc://nimbus-doc-test.pdf/"
+]
+  marker: S3
+  => PDF viewer 渲染: NO ❌
+
+=== S4: loadURL(nimbus-doc://pdf) 顶层 ===
+  => PDF viewer 渲染: NO ❌
+
+================ 汇总 ================
+S1 (file 顶层): false | S1b (loadURL file): false | S2 (file iframe): false | S3 (custom iframe): false | S4 (custom 顶层): false
+结论: iframe 可行 = false ; 自定义协议可用 = false

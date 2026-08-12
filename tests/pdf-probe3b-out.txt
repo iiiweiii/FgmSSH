@@ -1,0 +1,57 @@
+
+[21780:0811/222835.171:INFO:CONSOLE(2)] "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged.", source: node:electron/js2c/renderer_init (2)
+
+=== P1: file:// 顶层 ===
+  frames: []
+  downloads: []
+  => viewer: NO
+[21780:0811/222839.387:INFO:CONSOLE(2)] "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged.", source: node:electron/js2c/renderer_init (2)
+
+=== P2: nimbus-doc:// 顶层 ===
+  frames: []
+  downloads: []
+  => viewer: NO
+[21780:0811/222843.568:INFO:CONSOLE(1)] "Not allowed to load local resource: file:///C:/Users/we/AppData/Local/Temp/nimbus-pdf-probe3-4SS9vy/test.pdf", source: data:text/html;charset=utf-8,%3Cdiv%20id%3D%22r%22%3Ep3%3C%2Fdiv%3E%3Ciframe%20src%3D%22file%3A%2F%2F%2FC%3A%2FUsers%2Fwe%2FAppData%2FLocal%2FTemp%2Fnimbus-pdf-probe3-4SS9vy%2Ftest.pdf%22%20style%3D%22width%3A800px%3Bheight%3A600px%3B%22%3E%3C%2Fiframe%3E (1)
+[21780:0811/222843.572:INFO:CONSOLE(2)] "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged.", source: node:electron/js2c/renderer_init (2)
+
+=== P3: file:// iframe ===
+  frames: [""]
+  downloads: []
+  => viewer: NO
+[21780:0811/222847.636:INFO:CONSOLE(2)] "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged.", source: node:electron/js2c/renderer_init (2)
+
+=== P4: nimbus-doc:// iframe ===
+  frames: ["nimbus-doc://nimbus-doc-test.pdf/"]
+  downloads: []
+  => viewer: NO
+
+================ 汇总 ================
+P1(file顶层): false P2(custom顶层): false P3(file iframe): false P4(custom iframe): false
