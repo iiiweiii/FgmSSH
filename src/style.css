@@ -834,6 +834,91 @@ body.is-resizing * { cursor: col-resize !important; }
 .btn-primary:hover { filter: brightness(1.1); }
 .btn-primary:active { transform: scale(0.98); }
 
+/* ============ 主机密钥指纹校验弹窗 (TOFU, 防中间人) ============ */
+.check-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.check-row input[type="checkbox"] {
+  width: 14px; height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.hostkey-modal { width: 560px; }
+.hostkey-header h3 { color: var(--text); }
+.hostkey-overlay.mismatch .hostkey-header { border-bottom: 1px solid rgba(255, 92, 92, 0.3); }
+.hostkey-overlay.mismatch .hostkey-header h3 { color: var(--red); }
+.hostkey-body { padding-top: 10px; }
+.hostkey-warning {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: rgba(255, 92, 92, 0.12);
+  border: 1px solid rgba(255, 92, 92, 0.45);
+  border-radius: var(--radius-sm);
+  color: var(--red);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.hostkey-warning svg { flex-shrink: 0; margin-top: 1px; }
+.hostkey-warning strong { display: block; font-size: 13px; margin-bottom: 2px; }
+.hostkey-warning p { margin: 0; color: var(--text-dim); }
+.hostkey-line {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 12.5px;
+}
+.hostkey-line:last-child { border-bottom: none; }
+.hostkey-label {
+  flex: 0 0 92px;
+  color: var(--text-dim);
+  font-weight: 600;
+  padding-top: 2px;
+}
+.hostkey-value { color: var(--text); word-break: break-all; line-height: 1.5; }
+.hostkey-fp {
+  font-family: var(--font-mono, Consolas, 'Courier New', monospace);
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  user-select: text;
+}
+.hostkey-stored { display: block; margin-top: 10px; }
+.hostkey-stored-box {
+  flex: 1;
+  background: rgba(255, 92, 92, 0.06);
+  border: 1px solid rgba(255, 92, 92, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+}
+.hostkey-hint {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.hostkey-hint code {
+  font-family: var(--font-mono, Consolas, 'Courier New', monospace);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11.5px;
+}
+.hostkey-overlay.mismatch .hostkey-footer .btn-primary {
+  background: linear-gradient(135deg, #ff6b6b, #e04848);
+  box-shadow: 0 4px 12px rgba(255, 92, 92, 0.35);
+}
+
 /* ============ 图片预览模态 ============ */
 .preview-modal {
   position: fixed; inset: 0;

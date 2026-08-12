@@ -52,6 +52,10 @@ const editorHighlight = require('./src/editor-highlight');
 // 更新检查 (纯 node, 见 src/update-check.js): GitHub Releases API 版本比对 + 定时器,
 // 失败静默; fetchFn/timer 可注入 (main.js 注入 Electron net.fetch 与真实定时器)。
 const updateCheckModule = require('./src/update-check');
+// 主机密钥指纹校验 (纯 node, 见 src/hostkey-store.js): TOFU known_hosts 存储
+// (userData/known_hosts.json, 明文非机密, 与加密凭据库分离) + OpenSSH 兼容指纹计算。
+// main.js 注入存储路径, 在 buildConnConfig 中挂接 ssh2 hostVerifier。
+const hostkeyStore = require('./src/hostkey-store');
 
 // 防御性清理: 某些开发环境/宿主会注入 NODE_OPTIONS / ELECTRON_RUN_AS_NODE,
 // 会导致 Electron 拒绝启动 (--use-system-ca is not allowed in NODE_OPTIONS)
@@ -92,17 +96,23 @@ let mainWin = null;   // 主窗口引用 (托盘恢复用)
 const approvedLocalPaths = new Set();
 
 // ---------- 更新检查配置 (Roadmap 第一梯队 ③, S) ----------
-// owner/repo 为占位示例, 发布后需替换为真实仓库 (或用 package.json repository 字段)。
+// 对应 GitHub 真实仓库 https://github.com/iiiweiii/NimbusSSH (public)。
+// 发布新版本时在 GitHub 创建 tag (如 v1.1.0) 即触发更新提醒 (compareVersions 与当前版本比较)。
 // 单文件绿色版定位: 仅检查提示, 不自动下载/不自动升级; 失败/离线/超时一律静默。
 const UPDATE_CHECK_CONFIG = {
-  owner: 'nimbus-ssh',      // TODO: 替换为真实 GitHub owner
-  repo: 'nimbus-ssh',       // TODO: 替换为真实 GitHub repo
+  owner: 'iiiweiii',
+  repo: 'NimbusSSH',
   initialDelayMs: 4000,     // 启动延迟 (不阻塞启动)
   intervalMs: 24 * 3600 * 1000, // 启动一次 + 每 24h 一次
   timeoutMs: 5000,          // 请求超时 (静默跳过)
 };
 // 全局设置 (userData/settings.json): autoCheckUpdate 总开关 (与连接配置无关)
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
+// 主机密钥指纹库 (TOFU, 防中间人): userData/known_hosts.json, 与 connections.json 同级。
+// 明文存储 (指纹非机密, 与 OpenSSH known_hosts 同定位), 与加密凭据库完全分离。
+const KNOWN_HOSTS_FILE = path.join(app.getPath('userData'), 'known_hosts.json');
+// 指纹确认弹窗超时 (ms): 用户无响应默认拒绝 (防连接挂起)
+const HOSTKEY_CONFIRM_TIMEOUT_MS = 60000;
 // 运行中的更新检查器 (settings:save 关闭/开启时 stop/start)
 let updateChecker = null;
 
@@ -306,6 +316,7 @@ function createSSHSession(winId, sessionId, config) {
   const key = `${winId}:${sessionId}`;
   const session = {
     id: sessionId,
+    winId,                  // 窗口 ID: hostVerifier 向对应窗口发指纹确认/警告事件用
     conn: null,              // ssh2 Client (初始连接/重连时重建)
     stream: null,
     sftp: null,              // 懒加载的 SFTP 通道, 首次使用时创建并缓存 (重连后失效重建)
@@ -316,6 +327,14 @@ function createSSHSession(winId, sessionId, config) {
     reconnectTimer: null,    // (兼容字段) 由 reconnectRunner 管理定时器
     reconnectRunner: null,   // 断线自动重连控制器 (src/reconnect.js)
     resizeHandler: null,
+    // 主机密钥指纹校验状态 (TOFU): 每会话独立, 多会话并发不串台
+    hostKeyState: {
+      pending: false,        // 是否有正在等待用户确认的指纹校验
+      queue: [],             // 并发校验回调队列 (防重复弹窗; accept/reject 统一放行/拒绝)
+      timer: null,           // 确认超时定时器 (60s 默认拒绝)
+      mode: null,            // 'confirm' (首次) | 'mismatch' (危险警告)
+      host: null, port: null, algorithm: null, fingerprint: null, md5: null,
+    },
     user: `${config.username}@${config.host}`, // 审计用户标识 (username@host)
     auditDisconnectLogged: false,              // 防重复记录断开日志 (error/close/主动断开/窗口关闭)
     everConnected: false,                      // 曾成功建立过 shell (重连判定边界)
@@ -361,7 +380,201 @@ function buildConnConfig(session) {
     // agent 认证
     connConfig.agent = process.env.SSH_AUTH_SOCK;
   }
+
+  // 主机密钥指纹校验 (TOFU, 防中间人): 默认开启, 连接配置 hostKeyVerify=false 可关闭;
+  // 关闭时不传 hostVerifier (ssh2 不校验服务器指纹)。初始连接与重连共用本函数,
+  // trusted 指纹直接放行 (无 UI), unknown/mismatch 走确认/警告弹窗 (60s 超时默认拒绝)。
+  if (config.hostKeyVerify !== false) {
+    connConfig.hostVerifier = (keyBuffer, callback) => {
+      handleHostKeyVerification(session, keyBuffer, callback);
+    };
+  }
   return connConfig;
+}
+
+// ---------- 主机密钥指纹校验 (TOFU, 防中间人) ----------
+// ssh2 hostVerifier 回调: 对服务器 host key 计算 OpenSSH 兼容 SHA256 指纹并比对 known_hosts。
+//   trusted  -> 直接放行 (初始连接与重连共用, 无 UI);
+//   unknown  -> 发 hostkey:confirm 事件等待用户确认 (60s 无响应默认拒绝);
+//   mismatch -> 发 hostkey:mismatch 危险警告 (用户可覆盖信任新指纹或拒绝连接)。
+// 并发安全: 状态挂在 session.hostKeyState, 事件带 sessionId, 多会话首次连接互不串台。
+
+// 从 host key blob 前 4 字节解析算法名 (ssh-ed25519 / ssh-rsa / ecdsa-sha2-nistp256 ...)
+function detectKeyAlgorithm(keyBuffer) {
+  if (!Buffer.isBuffer(keyBuffer) || keyBuffer.length < 4) return 'unknown';
+  try {
+    const len = keyBuffer.readUInt32BE(0);
+    if (len > 0 && len <= keyBuffer.length - 4) {
+      const name = keyBuffer.slice(4, 4 + len).toString('utf8');
+      if (name && /^[A-Za-z0-9-]+$/.test(name)) return name;
+    }
+  } catch (e) { /* 非标准 blob: 回退 unknown */ }
+  return 'unknown';
+}
+
+// 向指定窗口发送主机密钥事件 (hostkey:confirm / hostkey:mismatch)
+function sendHostKeyEvent(session, channel, payload) {
+  const win = BrowserWindow.fromId(Number(session.winId));
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(channel, Object.assign({ sessionId: session.id }, payload));
+  }
+}
+
+// 重置会话待确认指纹状态 (清队列 + 取消超时定时器)
+function resetHostKeyState(session) {
+  const st = session.hostKeyState;
+  if (!st) return;
+  if (st.timer) {
+    try { clearTimeout(st.timer); } catch (e) {}
+    st.timer = null;
+  }
+  st.pending = false;
+  st.mode = null;
+  st.host = null;
+  st.port = null;
+  st.algorithm = null;
+  st.fingerprint = null;
+  st.md5 = null;
+  st.queue = [];
+}
+
+// 拒绝队列中全部挂起的校验回调 (用户拒绝 / 超时 / 会话关闭): callback(false) -> 连接失败
+function rejectPendingHostKeyCallbacks(session, auditDetail) {
+  const st = session.hostKeyState;
+  if (!st || !st.pending) return { ok: false, error: '没有待确认的主机密钥' };
+  const queue = st.queue.slice();
+  const { host, port, algorithm } = st;
+  resetHostKeyState(session);
+  auditLog.logAudit({
+    type: 'hostkey.reject',
+    target: `${host}:${port}`,
+    result: 'failure',
+    user: session.user,
+    session: session.id,
+    detail: auditDetail || `用户拒绝主机密钥 (${algorithm})`,
+  });
+  for (const cb of queue) {
+    if (typeof cb === 'function') {
+      try { cb(false); } catch (e) { /* 回调异常不影响其余 */ }
+    }
+  }
+  return { ok: true };
+}
+
+// 接受队列中全部挂起的校验回调 (首次信任 / 覆盖信任新指纹): trustHostKey 落库 + callback(true)
+function acceptPendingHostKeyCallbacks(session, override) {
+  const st = session.hostKeyState;
+  if (!st || !st.pending) return { ok: false, error: '没有待确认的主机密钥' };
+  const queue = st.queue.slice();
+  const { host, port, fingerprint, algorithm } = st;
+  const saved = hostkeyStore.trustHostKey(KNOWN_HOSTS_FILE, host, port, fingerprint, algorithm);
+  resetHostKeyState(session);
+  auditLog.logAudit({
+    type: override ? 'hostkey.override' : 'hostkey.accept',
+    target: `${host}:${port}`,
+    result: 'success',
+    user: session.user,
+    session: session.id,
+    detail: `${override ? '主机密钥不匹配, 用户选择信任新指纹' : '首次连接, 用户信任主机密钥'} (${algorithm})`,
+  });
+  for (const cb of queue) {
+    if (typeof cb === 'function') {
+      try { cb(true); } catch (e) { /* 回调异常不影响其余 */ }
+    }
+  }
+  return saved;
+}
+
+// 等待用户确认的指纹校验入口 (unknown / mismatch 共用):
+// 已有弹窗在等 -> 挂起本次回调到队列 (防重复弹窗); 否则发事件 + 60s 超时兜底。
+function waitHostKeyConfirmation(session, mode, info) {
+  const st = session.hostKeyState;
+  if (st.pending) {
+    st.queue.push(info.callback);
+    return;
+  }
+  st.pending = true;
+  st.mode = mode;
+  st.host = info.host;
+  st.port = info.port;
+  st.algorithm = info.algorithm;
+  st.fingerprint = info.fingerprint;
+  st.md5 = info.md5;
+  st.queue = [info.callback];
+  sendHostKeyEvent(session, mode === 'mismatch' ? 'hostkey:mismatch' : 'hostkey:confirm', info.event);
+  st.timer = setTimeout(() => {
+    // 确认弹窗 60s 无响应: 默认拒绝 (防连接挂起)
+    rejectPendingHostKeyCallbacks(session, '指纹确认超时, 已拒绝连接');
+  }, HOSTKEY_CONFIRM_TIMEOUT_MS);
+}
+
+// ssh2 hostVerifier 主逻辑 (session 必须含 winId / id / config / hostKeyState)
+function handleHostKeyVerification(session, keyBuffer, callback) {
+  if (typeof callback !== 'function') return;
+  const config = session && session.config;
+  if (!config) {
+    try { callback(false); } catch (e) {}
+    return;
+  }
+  const host = config.host;
+  const port = Number(config.port) || 22;
+
+  let fp;
+  try {
+    fp = hostkeyStore.computeFingerprint(keyBuffer);
+  } catch (e) {
+    try { callback(false); } catch (err) {}
+    return;
+  }
+  const algorithm = detectKeyAlgorithm(keyBuffer);
+  const res = hostkeyStore.checkHostKey(KNOWN_HOSTS_FILE, host, port, fp.sha256, algorithm);
+
+  if (res.status === 'trusted') {
+    // 已信任指纹: 直接放行 (初始连接 / 自动重连共用, 无 UI)
+    try { callback(true); } catch (e) {}
+    return;
+  }
+
+  if (res.status === 'mismatch') {
+    // 危险! 库中已有不同指纹 -> 发警告, 用户可覆盖信任新指纹或拒绝连接
+    auditLog.logAudit({
+      type: 'hostkey.mismatch',
+      target: `${host}:${port}`,
+      result: 'failure',
+      user: session.user,
+      session: session.id,
+      detail: `主机密钥与已存指纹不匹配 (${algorithm})`,
+    });
+    waitHostKeyConfirmation(session, 'mismatch', {
+      host, port, algorithm,
+      fingerprint: fp.sha256,
+      md5: fp.md5,
+      callback,
+      event: {
+        host, port, algorithm,
+        sha256: fp.sha256,
+        md5: fp.md5,
+        storedSha256: (res.stored && res.stored.fingerprint) || '',
+        storedAlgorithm: (res.stored && res.stored.algorithm) || '',
+        keyId: hostkeyStore.hostKeyId(host, port),
+      },
+    });
+    return;
+  }
+
+  // unknown: 首次连接 -> 发确认弹窗 (展示 SHA256 + MD5 指纹)
+  waitHostKeyConfirmation(session, 'confirm', {
+    host, port, algorithm,
+    fingerprint: fp.sha256,
+    md5: fp.md5,
+    callback,
+    event: {
+      host, port, algorithm,
+      sha256: fp.sha256,
+      md5: fp.md5,
+      keyId: hostkeyStore.hostKeyId(host, port),
+    },
+  });
 }
 
 // 重连凭据复用: 优先从持久化存储解密 (credential-store.decryptRecord, 按 host/port/username 匹配),
@@ -610,6 +823,10 @@ function cleanupSession(winId, sessionId, session) {
   if (session.closed) return;
   session.closed = true;
   session.reconnecting = false;
+  // 会话关闭: 若仍有等待用户确认的主机密钥校验, 按拒绝处理 (防止 ssh2 回调挂起)
+  if (session.hostKeyState && session.hostKeyState.pending) {
+    rejectPendingHostKeyCallbacks(session, '会话已关闭, 主机密钥校验取消');
+  }
   if (session.reconnectRunner) {
     session.reconnectRunner.cancel();
     session.reconnectRunner = null;
@@ -1614,6 +1831,30 @@ ipcMain.handle('ssh:disconnect', (e, { sessionId }) => {
     cleanupSession(e.sender.id, sessionId, session);
   }
   return { ok: true };
+});
+
+// ---------- 主机密钥指纹校验 IPC (TOFU, 防中间人) ----------
+// hostkey:accept: 用户信任当前指纹。unknown 首次连接 -> 落库 + 放行 (hostkey.accept);
+// mismatch 危险警告 -> 必须显式 override=true 才允许覆盖信任新指纹 (hostkey.override)。
+ipcMain.handle('hostkey:accept', (e, { sessionId, override }) => {
+  const key = `${e.sender.id}:${sessionId}`;
+  const session = sessions.get(key);
+  if (!session) return { ok: false, error: '会话不存在' };
+  const st = session.hostKeyState;
+  if (!st || !st.pending) return { ok: false, error: '没有待确认的主机密钥' };
+  // mismatch 弹窗必须显式 override=true 才允许覆盖 (安全边界); confirm 弹窗忽略 override 位
+  if (st.mode === 'mismatch' && !override) {
+    return { ok: false, error: '主机密钥不匹配, 需显式确认覆盖' };
+  }
+  return acceptPendingHostKeyCallbacks(session, override === true || st.mode === 'mismatch');
+});
+
+// hostkey:reject: 用户拒绝当前指纹 -> callback(false) 使连接失败 + 审计 hostkey.reject
+ipcMain.handle('hostkey:reject', (e, { sessionId }) => {
+  const key = `${e.sender.id}:${sessionId}`;
+  const session = sessions.get(key);
+  if (!session) return { ok: false, error: '会话不存在' };
+  return rejectPendingHostKeyCallbacks(session, null);
 });
 
 // 创建隧道 (面板「新增隧道」/ 连接后自动建立共用; 返回 {ok, tunnelId?, error?})

@@ -35,3 +35,6 @@ tests/hostkey*
 *.pem
 *.key
 !tests/hostkey-test*.js
+!tests/hostkey-store-test.js
+!tests/hostkey-verifier-test.js
+!tests/hostkey-e2e-test.js

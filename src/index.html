@@ -331,6 +331,13 @@
             使用系统 SSH-Agent (Windows OpenSSH Agent) 中已加载的密钥进行认证
           </div>
         </div>
+        <!-- 安全选项 -->
+        <div class="form-row">
+          <label class="check-row" title="首次连接时校验服务器主机密钥指纹并记录, 后续连接自动比对 (TOFU, 防中间人攻击)">
+            <input type="checkbox" id="fHostKeyVerify" checked />
+            <span>主机密钥校验 (TOFU, 防中间人)</span>
+          </label>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn-cancel" id="btnCancel">取消</button>
@@ -587,6 +594,49 @@
       <div class="modal-footer">
         <button class="btn-cancel" id="configPwdCancel">取消</button>
         <button class="btn-primary" id="configPwdOk">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 主机密钥指纹确认/警告弹窗 (TOFU, 防中间人) ============
+       两种形态共用一个 modal:
+       - 首次连接 (unknown): 展示服务器指纹, 用户「信任并连接」/「取消」
+       - 指纹不匹配 (mismatch): 红色危险警告, 展示已存 vs 当前指纹, 「信任新指纹并继续」/「拒绝连接」
+       Esc / 遮罩点击 = 拒绝。 -->
+  <div class="modal-overlay hostkey-overlay" id="hostKeyModal" style="display:none;">
+    <div class="modal hostkey-modal">
+      <div class="modal-header hostkey-header">
+        <h3 id="hostKeyTitle">主机密钥确认</h3>
+        <button class="icon-btn modal-close" id="hostKeyClose" title="关闭 (拒绝)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body hostkey-body">
+        <div class="hostkey-warning" id="hostKeyWarning" style="display:none;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div>
+            <strong>主机密钥不匹配！可能存在中间人攻击</strong>
+            <p>服务器返回的主机密钥与之前记录的指纹不一致。请立即停止连接并联系服务器管理员确认。</p>
+          </div>
+        </div>
+        <div class="hostkey-info" id="hostKeyInfo">
+          <div class="hostkey-line"><span class="hostkey-label">主机</span><span class="hostkey-value" id="hostKeyHost"></span></div>
+          <div class="hostkey-line"><span class="hostkey-label">算法</span><span class="hostkey-value" id="hostKeyAlgo"></span></div>
+          <div class="hostkey-line"><span class="hostkey-label">SHA256 指纹</span><span class="hostkey-value hostkey-fp" id="hostKeySha"></span></div>
+          <div class="hostkey-line"><span class="hostkey-label">MD5 指纹</span><span class="hostkey-value hostkey-fp" id="hostKeyMd5"></span></div>
+          <div class="hostkey-line hostkey-stored" id="hostKeyStoredWrap" style="display:none;">
+            <span class="hostkey-label">已存指纹</span>
+            <div class="hostkey-stored-box">
+              <div class="hostkey-line"><span class="hostkey-label">算法</span><span class="hostkey-value hostkey-fp" id="hostKeyStoredAlgo"></span></div>
+              <div class="hostkey-line"><span class="hostkey-label">SHA256</span><span class="hostkey-value hostkey-fp" id="hostKeyStoredSha"></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="hostkey-hint" id="hostKeyHint"></div>
+      </div>
+      <div class="modal-footer hostkey-footer">
+        <button class="btn-cancel" id="hostKeyRejectBtn">取消</button>
+        <button class="btn-primary" id="hostKeyAcceptBtn">信任并连接</button>
       </div>
     </div>
   </div>

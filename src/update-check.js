@@ -24,10 +24,10 @@
 const GITHUB_API = 'https://api.github.com/repos/';
 const GITHUB_WEB = 'https://github.com/';
 
-// 默认配置 (owner/repo 为占位示例, 需替换为真实仓库; 见 main.js UPDATE_CHECK 注释)
+// 默认配置 (owner/repo 对应真实仓库; 调用方 main.js 总会显式注入, 此处仅为缺省兜底)
 const DEFAULT_CONFIG = {
-  owner: 'nimbus-ssh',
-  repo: 'nimbus-ssh',
+  owner: 'iiiweiii',
+  repo: 'NimbusSSH',
   timeoutMs: 5000,        // 请求超时 (静默跳过)
   initialDelayMs: 4000,   // 启动延迟 (不阻塞启动)
   intervalMs: 24 * 3600 * 1000, // 每 24h 一次

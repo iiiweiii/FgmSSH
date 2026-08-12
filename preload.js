@@ -66,6 +66,15 @@ contextBridge.exposeInMainWorld('nimbus', {
   // Roadmap 第一梯队 ③ (S): 更新检查结果事件 (主进程广播, 非会话级)
   onUpdateCheck: (cb) => ipcRenderer.on('update:check', (e, payload) => cb(payload)),
 
+  // Roadmap 第一梯队 ② (S): 主机密钥指纹校验 (TOFU, 防中间人)
+  // 用户对「首次连接指纹确认 / 不匹配危险警告」的响应 (sessionId 定位在等校验的会话;
+  // override=true 表示 mismatch 场景下显式信任新指纹)。
+  hostKeyAccept: (sessionId, override) => ipcRenderer.invoke('hostkey:accept', { sessionId, override }),
+  hostKeyReject: (sessionId) => ipcRenderer.invoke('hostkey:reject', { sessionId }),
+  // 主进程 -> 渲染层: 指纹确认 (unknown 首次连接) / 不匹配警告 (mismatch)
+  onHostKeyConfirm: (cb) => ipcRenderer.on('hostkey:confirm', (e, payload) => cb(payload)),
+  onHostKeyMismatch: (cb) => ipcRenderer.on('hostkey:mismatch', (e, payload) => cb(payload)),
+
   // 连接配置存储
   storeLoad: () => ipcRenderer.invoke('store:load'),
   storeSave: (list) => ipcRenderer.invoke('store:save', list),

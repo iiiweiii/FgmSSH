@@ -218,7 +218,7 @@ section('检查器: 检查开关 (autoCheck) 与定时器');
 // ================= 静态断言 =================
 section('静态断言: main.js (更新检查接入)');
 {
-  check('UPDATE_CHECK_CONFIG 常量 (owner/repo 占位)', /UPDATE_CHECK_CONFIG\s*=\s*\{[\s\S]*?owner:\s*['"]nimbus-ssh['"]/.test(mainSrc));
+  check('UPDATE_CHECK_CONFIG 常量 (真实仓库 iiiweiii/NimbusSSH)', /UPDATE_CHECK_CONFIG\s*=\s*\{[\s\S]*?owner:\s*['"]iiiweiii['"][\s\S]*?repo:\s*['"]NimbusSSH['"]/.test(mainSrc));
   check('settings.json 全局设置 (autoCheckUpdate)', /SETTINGS_FILE\s*=\s*path\.join\(app\.getPath\(['"]userData['"]\),\s*['"]settings\.json['"]\)/.test(mainSrc));
   check('loadGlobalSettings 默认 autoCheckUpdate=true', /autoCheckUpdate:\s*parsed\.autoCheckUpdate\s*!==\s*false/.test(mainSrc));
   check('startUpdateChecker 在 app ready 调用', /startUpdateChecker\(\);/.test(mainSrc));

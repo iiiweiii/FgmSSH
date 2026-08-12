@@ -645,6 +645,8 @@ async function openSession(connConfig) {
       // 断线自动重连 (Roadmap 第一梯队 ①): 每连接配置, 默认开 (主进程 autoReconnect !== false)
       autoReconnect: connConfig.autoReconnect,
       autoReconnectMaxAttempts: connConfig.autoReconnectMaxAttempts,
+      // 主机密钥指纹校验 (Roadmap 第一梯队 ②, TOFU): 默认开 (主进程 hostKeyVerify !== false)
+      hostKeyVerify: connConfig.hostKeyVerify !== false,
     });
   } catch (e) {
     setSessionError(session, '无法发起连接: ' + e.message);
@@ -841,8 +843,86 @@ function showReconnectFailed(session, error) {
   toast(error ? ('重连失败：' + error) : '重连失败', 'error');
 }
 
+// ============ 主机密钥指纹校验弹窗 (TOFU, 防中间人) ============
+// 多会话并发安全: hostKeyDialogs 按 sessionId 排队, 同一时刻只展示一个弹窗;
+// 用户响应时只解决当前展示的会话 (hostKeyActiveSession), 再展示下一个待确认项。
+// Esc / 遮罩点击 / 关闭按钮 = 拒绝 (hostKeyReject)。
+const hostKeyDialogs = new Map(); // sessionId -> payload (confirm | mismatch)
+let hostKeyActiveSession = null;  // 当前正在展示的会话 ID
+
+function getHostKeyModal() { return $('#hostKeyModal'); }
+
+// 展示下一个待确认的主机密钥弹窗 (无待确认则隐藏)
+function showNextHostKeyDialog() {
+  const first = hostKeyDialogs.keys().next();
+  if (first.done) {
+    hostKeyActiveSession = null;
+    getHostKeyModal().style.display = 'none';
+    return;
+  }
+  hostKeyActiveSession = first.value;
+  const p = hostKeyDialogs.get(hostKeyActiveSession);
+  if (!p) { hostKeyDialogs.delete(hostKeyActiveSession); showNextHostKeyDialog(); return; }
+  renderHostKeyDialog(p);
+  getHostKeyModal().style.display = 'flex';
+}
+
+// 将 confirm/mismatch 事件入队并展示 (队列保证多会话并发不串台)
+function queueHostKeyDialog(payload) {
+  if (!payload || !payload.sessionId) return;
+  hostKeyDialogs.set(payload.sessionId, payload);
+  if (!hostKeyActiveSession) showNextHostKeyDialog();
+}
+
+// 渲染弹窗内容 (首次确认 / 不匹配警告两种形态)
+function renderHostKeyDialog(p) {
+  const mismatch = !!p.storedSha256 || p.mismatch === true;
+  const modal = getHostKeyModal();
+  modal.classList.toggle('mismatch', mismatch);
+  $('#hostKeyTitle').textContent = mismatch ? '⚠️ 主机密钥不匹配' : '首次连接 · 确认主机密钥';
+  $('#hostKeyWarning').style.display = mismatch ? 'flex' : 'none';
+  $('#hostKeyHost').textContent = `${p.host}:${p.port}`;
+  $('#hostKeyAlgo').textContent = p.algorithm || 'unknown';
+  $('#hostKeySha').textContent = p.sha256 || '';
+  $('#hostKeyMd5').textContent = p.md5 || '';
+  const storedWrap = $('#hostKeyStoredWrap');
+  if (mismatch) {
+    storedWrap.style.display = '';
+    $('#hostKeyStoredAlgo').textContent = p.storedAlgorithm || 'unknown';
+    $('#hostKeyStoredSha').textContent = p.storedSha256 || '';
+  } else {
+    storedWrap.style.display = 'none';
+  }
+  const hint = $('#hostKeyHint');
+  if (mismatch) {
+    hint.innerHTML = '如确认是服务器端密钥更换 (而非攻击), 可信任新指纹继续连接; 否则请选择「拒绝连接」。';
+  } else {
+    hint.innerHTML = '首次连接到此主机。请通过可信渠道比对服务器指纹 (例如: <code>ssh-keyscan -t ed25519 ' +
+      escapeHtml(String(p.host || '')) + '</code>), 确认无误后再信任。';
+  }
+  $('#hostKeyAcceptBtn').textContent = mismatch ? '信任新指纹并继续' : '信任并连接';
+}
+
+// 关闭当前弹窗并解决 (accept=true -> hostkey:accept, 否则 hostkey:reject)
+function resolveHostKeyDialog(accept, override) {
+  const sessionId = hostKeyActiveSession;
+  if (!sessionId) return;
+  hostKeyDialogs.delete(sessionId);
+  if (accept) {
+    window.nimbus.hostKeyAccept(sessionId, !!override);
+  } else {
+    window.nimbus.hostKeyReject(sessionId);
+  }
+  hostKeyActiveSession = null;
+  showNextHostKeyDialog();
+}
+
 // ============ 主进程事件 ============
 function wireIPC() {
+  // 主机密钥指纹校验 (TOFU): 首次连接确认 / 不匹配危险警告 (按 sessionId 排队)
+  window.nimbus.onHostKeyConfirm((payload) => queueHostKeyDialog(payload));
+  window.nimbus.onHostKeyMismatch((payload) => queueHostKeyDialog(Object.assign({ mismatch: true }, payload)));
+
   // 终端数据
   window.nimbus.onData(({ sessionId, data }) => {
     const session = sessions.get(sessionId);
@@ -3533,6 +3613,8 @@ function handleConnect() {
     password: method === 'password' ? $('#fPassword').value : '',
     privateKeyPath: method === 'privateKey' ? $('#fKeyPath').value : '',
     passphrase: method === 'privateKey' ? $('#fPassphrase').value : '',
+    // 主机密钥指纹校验 (TOFU): 默认开, 用户可取消勾选关闭
+    hostKeyVerify: $('#fHostKeyVerify').checked,
   };
 
   // 保存连接
@@ -3610,6 +3692,19 @@ async function init() {
   });
   $('#configPwdModal').addEventListener('click', (e) => {
     if (e.target === $('#configPwdModal')) closeConfigPwdModal();
+  });
+
+  // Roadmap 第一梯队 ②: 主机密钥指纹校验弹窗 (TOFU, 防中间人)
+  // 信任/接受按钮: confirm 形态 -> hostKeyAccept(override=false);
+  // mismatch 形态 -> hostKeyAccept(override=true) 覆盖信任新指纹。
+  $('#hostKeyAcceptBtn').addEventListener('click', () => {
+    const isMismatch = getHostKeyModal().classList.contains('mismatch');
+    resolveHostKeyDialog(true, isMismatch);
+  });
+  $('#hostKeyRejectBtn').addEventListener('click', () => resolveHostKeyDialog(false));
+  $('#hostKeyClose').addEventListener('click', () => resolveHostKeyDialog(false));
+  $('#hostKeyModal').addEventListener('click', (e) => {
+    if (e.target === $('#hostKeyModal')) resolveHostKeyDialog(false);
   });
 
   // 搜索 (抽屉顶部)
@@ -3794,7 +3889,11 @@ async function init() {
       return;
     }
     if (e.key === 'Escape') {
-      // Esc 优先级: SFTP 右键菜单 -> 连接抽屉 -> 图片预览 -> 新建连接弹窗
+      // Esc 优先级: 主机密钥弹窗 (安全拦截, 最高) -> SFTP 右键菜单 -> 连接抽屉 -> 图片预览 -> 新建连接弹窗
+      if ($('#hostKeyModal').style.display === 'flex') {
+        resolveHostKeyDialog(false);
+        return;
+      }
       if (ctxMenuTarget) {
         hideContextMenu();
         return;
