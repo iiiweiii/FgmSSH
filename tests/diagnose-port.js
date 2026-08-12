@@ -22,7 +22,7 @@ function tryConnect(label, port) {
       host: '172.16.11.10',
       port,
       username: 'root',
-      password: '92eXlHKg8i',
+      password: 'CHANGE_ME_TEST_PASSWORD',
       readyTimeout: 15000,
     });
     setTimeout(() => finish(`[${label}] ⏱ 超时 (15s)`), 15000);

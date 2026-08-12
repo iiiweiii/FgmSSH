@@ -9,7 +9,7 @@ app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('no-sandbox');
 
-const SERVER = { host: '172.16.11.10', port: 26810, username: 'root', password: '92eXlHKg8i', readyTimeout: 15000 };
+const SERVER = { host: '172.16.11.10', port: 26810, username: 'root', password: 'CHANGE_ME_TEST_PASSWORD', readyTimeout: 15000 };
 
 app.whenReady().then(() => {
   console.log('[electron] ready, 测试 ssh2 sftp...');

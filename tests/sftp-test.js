@@ -15,7 +15,7 @@ const CONFIG = {
   host: '172.16.11.10',
   port: 26810,
   username: 'root',
-  password: '92eXlHKg8i',
+  password: 'CHANGE_ME_TEST_PASSWORD',
   readyTimeout: 20000,
   keepaliveInterval: 10000,
   keepaliveCountMax: 3,
