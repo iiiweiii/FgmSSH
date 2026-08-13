@@ -58,7 +58,8 @@ jobs:
             New-Item -ItemType Directory -Force node_modules/esbuild/bin | Out-Null
             Copy-Item node_modules/@esbuild/win32-x64/esbuild.exe node_modules/esbuild/bin/esbuild.exe -Force
           }
-          node node_modules/esbuild/bin/esbuild.exe --version
+          # esbuild.exe 是原生二进制, 直接执行 (不要用 node 调用)
+          & node_modules/esbuild/bin/esbuild.exe --version
 
       - name: Build & release (tauri)
         uses: tauri-apps/tauri-action@v0
