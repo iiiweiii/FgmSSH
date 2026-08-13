@@ -7,7 +7,7 @@
  *   3. decryptRecord 对 enc:v1: token 解密、对明文/降级值原样返回
  *   4. migrateIfNeeded 把明文迁移为加密、changed=true; 已加密不动、changed=false; 幂等
  *   5. save/load 全链路 (list 经 encryptRecord 落盘 -> decryptRecord 读回, 凭据复原, 其他字段不变)
- *   6. 降级路径 (isEncryptionAvailable=false 时 encrypt 返回明文、load 正常、仅警告一次)
+ *   6. fail-closed 路径 (isEncryptionAvailable=false 时 encrypt 返回 null、不落明文、仅警告一次)
  *   7. 单条解密失败不抛 (mock decryptString 对特定 token 抛错 -> 该字段置空、整体成功)
  */
 const assert = require('assert');
@@ -149,32 +149,34 @@ async function run() {
     assert.ok(!diskJson.includes('key-pass'), '落盘 JSON 不应包含明文 passphrase');
   });
 
-  // ---------- 6. 降级路径 ----------
-  await test('降级: isEncryptionAvailable=false 时 encrypt 返回明文、load 正常、仅警告一次', () => {
+  // ---------- 6. fail-closed 路径 ----------
+  await test('fail-closed: isEncryptionAvailable=false 时 encrypt 返回 null、不落明文、仅警告一次', () => {
     const logs = [];
     const store = createCredentialStore({
       safeStorage: makeMockSafeStorage({ available: false }),
       log: (m) => logs.push(m),
     });
-    // encrypt 降级明文
-    assert.strictEqual(store.encrypt('plain-secret'), 'plain-secret');
-    assert.strictEqual(store.encrypt('plain-secret'), 'plain-secret', '再次调用仍明文');
+    // fail-closed: 加密不可用 -> encrypt 返回 null, 绝不返回明文
+    assert.strictEqual(store.encrypt('plain-secret'), null);
+    assert.strictEqual(store.encrypt('plain-secret'), null, '再次调用仍 null');
+    // 已加密 token 幂等返回 (不受可用性影响)
+    assert.strictEqual(store.encrypt('enc:v1:abc'), 'enc:v1:abc');
     // migrate 不标记 changed (不回写, 避免每次加载重复改写)
     const r = store.migrateIfNeeded([{ id: 1, password: 'p1', host: 'h' }]);
-    assert.strictEqual(r.changed, false, '降级时不应标记 changed');
-    assert.strictEqual(r.list[0].password, 'p1', '降级时保持明文');
+    assert.strictEqual(r.changed, false, '加密不可用时不应标记 changed');
+    assert.strictEqual(r.list[0].password, 'p1', '迁移时不改动明文 (不落盘)');
     // 无法解密 enc:v1: token -> 置空, 不抛
     assert.strictEqual(store.decrypt('enc:v1:AAAA'), '', '无法解密时置空');
     assert.strictEqual(store.decryptRecord({ id: 2, password: 'plain', host: 'h' }).password, 'plain', '明文原样返回');
-    // 仅警告一次
-    const downgradeLogs = logs.filter((m) => m.includes('降级'));
-    assert.ok(downgradeLogs.length >= 1, '应产生降级警告');
-    assert.ok(downgradeLogs.length <= 1, '降级警告应只出现一次 (实际 ' + downgradeLogs.length + ')');
+    // 仅警告一次 (新文案: 拒绝明文凭据落盘)
+    const downgradeLogs = logs.filter((m) => m.includes('拒绝明文凭据落盘'));
+    assert.ok(downgradeLogs.length >= 1, '应产生 fail-closed 警告');
+    assert.ok(downgradeLogs.length <= 1, '警告应只出现一次 (实际 ' + downgradeLogs.length + ')');
   });
 
-  await test('未注入 safeStorage: 不崩溃, 走降级明文', () => {
+  await test('未注入 safeStorage: 不崩溃, encrypt 返回 null (fail-closed)', () => {
     const store = createCredentialStore();
-    assert.strictEqual(store.encrypt('x'), 'x');
+    assert.strictEqual(store.encrypt('x'), null);
     assert.strictEqual(store.decrypt('x'), 'x');
     const r = store.migrateIfNeeded([{ id: 1, password: 'x' }]);
     assert.strictEqual(r.changed, false);

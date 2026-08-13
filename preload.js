@@ -36,7 +36,18 @@ contextBridge.exposeInMainWorld('nimbus', {
   },
   // 拖拽路径登记: 主进程校验存在性/普通文件后登记到 approvedLocalPaths, 供 sftp:upload 消费校验
   // (与对话框流程同等安全, 文件夹在此被过滤, 不做目录递归上传)
-  sftpRegisterUploadPaths: (paths) => ipcRenderer.invoke('sftp:registerUploadPaths', { paths }),
+  // P0-4: 只接受真实拖拽 File 对象数组。webUtils.getPathForFile 仅对真实 OS 拖拽产生的
+  // File 返回磁盘路径 (伪造/内存 File 返回空串), 渲染层无法传任意路径字符串绕过登记。
+  sftpRegisterUploadPaths: (files) => {
+    const paths = [];
+    for (const f of (Array.isArray(files) ? files : [])) {
+      try {
+        const p = webUtils.getPathForFile(f);
+        if (p) paths.push(p);
+      } catch (err) { /* 非法 File 忽略 */ }
+    }
+    return ipcRenderer.invoke('sftp:registerUploadPaths', { paths });
+  },
   sftpMkdir: (sessionId, path) => ipcRenderer.invoke('sftp:mkdir', { sessionId, path }),
   sftpDelete: (sessionId, path) => ipcRenderer.invoke('sftp:delete', { sessionId, path }),
   sftpRename: (sessionId, oldPath, newPath) => ipcRenderer.invoke('sftp:rename', { sessionId, oldPath, newPath }),

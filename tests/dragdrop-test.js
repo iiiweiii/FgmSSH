@@ -133,7 +133,7 @@ async function main() {
   check('preload 暴露 getPathForFile', /getPathForFile:\s*\(file\)\s*=>/.test(preloadSrc));
   check('getPathForFile 同步调用 webUtils.getPathForFile', /webUtils\.getPathForFile\(file\)/.test(preloadSrc));
   check('getPathForFile 异常兜底返回空串', /catch\s*\(err\)\s*\{\s*return\s*['"]{2};?\s*\}/.test(preloadSrc));
-  check('preload 暴露 sftpRegisterUploadPaths', /sftpRegisterUploadPaths:\s*\(paths\)\s*=>/.test(preloadSrc));
+  check('preload 暴露 sftpRegisterUploadPaths', /sftpRegisterUploadPaths:\s*\(files\)\s*=>/.test(preloadSrc));
   check('登记通道指向 sftp:registerUploadPaths', /sftp:registerUploadPaths/.test(preloadSrc));
 
   section('静态断言: main.js (路径登记安全入口)');
@@ -150,7 +150,7 @@ async function main() {
   check('绑定 drop', /addEventListener\(['"]drop['"],\s*handleSftpDrop\)/.test(rendererSrc));
   check('高亮类 sftp-drop-active 存在', /sftp-drop-active/.test(rendererSrc));
   check('调用 window.nimbus.getPathForFile 取路径', /window\.nimbus\.getPathForFile\(file\)/.test(rendererSrc));
-  check('调用 window.nimbus.sftpRegisterUploadPaths 登记', /window\.nimbus\.sftpRegisterUploadPaths\(localPaths\)/.test(rendererSrc));
+  check('调用 window.nimbus.sftpRegisterUploadPaths 登记', /window\.nimbus\.sftpRegisterUploadPaths\(localFiles\)/.test(rendererSrc));
   check('声明共享串行上传函数 uploadLocalPaths', /async\s+function\s+uploadLocalPaths\s*\(/.test(rendererSrc));
   check('拖拽未连接守卫 currentSftpSession()', /if\s*\(!currentSftpSession\(\)\)\s*return/.test(rendererSrc));
   check('busy guard sftpDragUploading', /sftpDragUploading/.test(rendererSrc));
@@ -256,8 +256,14 @@ async function main() {
         getPathCalls.push(file.name);
         return file.name === 'dir' ? 'C:/dir' : 'C:/' + file.name;
       },
-      sftpRegisterUploadPaths: async (paths) => {
-        const accepted = paths.filter((p) => !p.endsWith('/dir') && !p.endsWith('\\dir'));
+      // P0-4: 渲染层只传 File 数组; 模拟 preload 侧 webUtils.getPathForFile 转路径 + 主进程过滤目录
+      // (独立转换, 不再走 window.nimbus.getPathForFile, 保持 getPathCalls 计数 = 渲染层调用次数)
+      sftpRegisterUploadPaths: async (files) => {
+        const accepted = [];
+        for (const f of files) {
+          const p = f.name === 'dir' ? 'C:/dir' : 'C:/' + f.name;
+          if (!p.endsWith('/dir') && !p.endsWith('\\dir')) accepted.push(p);
+        }
         return { ok: true, count: accepted.length, accepted };
       },
       sftpUpload: async (sid, local, remote) => {
@@ -290,7 +296,8 @@ async function main() {
     const toasts = [];
     sb.sandbox.window.nimbus = {
       getPathForFile: (file) => 'C:/' + file.name,
-      sftpRegisterUploadPaths: async (paths) => ({ ok: true, count: paths.length, accepted: paths }),
+      // P0-4: 登记接收 File 数组 (此处 busy guard 提前返回, 实际不会被调用)
+      sftpRegisterUploadPaths: async (files) => ({ ok: true, count: files.length, accepted: files }),
       sftpUpload: async (sid, local, remote) => { uploadCalls.push(local); return { ok: true }; },
     };
     sb.sandbox.toast = (msg, type) => toasts.push({ msg, type });

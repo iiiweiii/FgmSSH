@@ -72,7 +72,17 @@ async function loadConnections() {
 }
 
 async function persistConnections() {
-  try { await window.nimbus.storeSave(connections); } catch (e) {}
+  try {
+    const res = await window.nimbus.storeSave(connections);
+    if (res && res.ok === false) {
+      toast((res.error) || '连接保存失败', 'error');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    toast('连接保存失败', 'error');
+    return false;
+  }
 }
 
 // ============ 常用命令收藏 (Roadmap ④, 纯前端) ============
@@ -652,6 +662,7 @@ async function openSession(connConfig) {
       port: connConfig.port,
       username: connConfig.username,
       authMethod: connConfig.authMethod || 'password',
+      connId: connConfig.id || null,
       password: connConfig.password || '',
       privateKeyPath: connConfig.privateKeyPath || '',
       passphrase: connConfig.passphrase || '',
@@ -1921,8 +1932,9 @@ async function handleSftpDrop(e) {
   }
 
   // 逐文件取真实本地路径 (preload webUtils.getPathForFile, 同步; 去重)
+  const localFiles = Array.from(dt.files);
   const localPaths = [];
-  for (const file of Array.from(dt.files)) {
+  for (const file of localFiles) {
     let p = '';
     try { p = window.nimbus.getPathForFile(file) || ''; } catch (err) { p = ''; }
     if (p && !localPaths.includes(p)) localPaths.push(p);
@@ -1936,9 +1948,10 @@ async function handleSftpDrop(e) {
   if (dirCount > 0) toast(`已忽略 ${dirCount} 个文件夹 (暂不支持目录上传)`, 'info');
 
   // 登记路径 (主进程过滤不存在/目录) -> 仅上传登记成功的路径
+  // P0-4: 路径解析与登记全部移到 preload (webUtils.getPathForFile), 渲染层只传真实 File 数组
   let reg;
   try {
-    reg = await window.nimbus.sftpRegisterUploadPaths(localPaths);
+    reg = await window.nimbus.sftpRegisterUploadPaths(localFiles);
   } catch (err) {
     toast('拖拽上传失败: ' + (err.message || '未知错误'), 'error');
     return;

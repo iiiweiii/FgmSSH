@@ -3,11 +3,13 @@
  * ============================================================
  * 职责:
  *   - 用 Electron 主进程 safeStorage (Windows 上为 DPAPI) 加密连接配置中的
- *     password / passphrase 字段后落盘; 读取时解密为明文供渲染层使用。
- *   - 渲染层 store:load / store:save 对外行为不变 (load 返回明文, save 在主进程加密)。
- *   - 旧明文配置自动迁移: 首次加载发现明文 password/passphrase -> 自动加密回写 (幂等, 用户无感)。
- *   - 安全降级: safeStorage.isEncryptionAvailable() 为 false 时保持明文并 console.warn 一次,
- *     绝不崩溃、不影响连接功能。
+ *     password / passphrase 字段后落盘; 明文只在主进程内接触 (连接补全/导出)。
+ *   - 渲染层 store:load 返回脱敏视图 (password/passphrase 置空, 附 hasPassword/hasPassphrase
+ *     标记); store:save 提交的记录由主进程加密落盘 (留空字段沿用磁盘原密文)。
+ *   - 旧明文配置自动迁移: 首次加载发现明文 password/passphrase -> 自动加密回写 (幂等, 用户无感);
+ *     加密不可用时拒绝明文回写 (fail-closed), 迁移仅当 safeStorage 可用时进行。
+ *   - 安全降级: safeStorage.isEncryptionAvailable() 为 false 时拒绝保存明文凭据 (fail-closed),
+ *     encrypt 返回 null 使上层整体拒绝写入, 绝不落明文, 也不影响连接功能。
  *   - 加解密失败容错: 单条解密失败 (密钥轮换/文件损坏) -> 该字段置空并跳过 (不抛异常),
  *     整体 load 不因单条失败而失败。
  *
@@ -68,23 +70,24 @@ function createCredentialStore({ safeStorage, log } = {}) {
 
   /**
    * 加密单个明文秘密 -> token; 已加密 token 原样返回 (幂等)。
-   * 降级: safeStorage 不可用或加密抛错时返回明文, 绝不抛给调用方。
+   * fail-closed: safeStorage 不可用或加密抛错时返回 null (表示加密失败),
+   * 绝不返回明文; 由上层 (encryptRecord/saveConnections) 决定拒绝写入。
    * @param {string} secret
-   * @returns {string}
+   * @returns {string|null}
    */
   function encrypt(secret) {
     if (typeof secret !== 'string' || secret === '') return secret;
     if (secret.startsWith(TOKEN_PREFIX)) return secret; // 已加密, 幂等
     if (!encryptionAvailable()) {
-      warn('downgrade', '[credential-store] safeStorage 不可用, 凭据以明文降级存储 (仅警告一次)');
-      return secret;
+      warn('downgrade', '[credential-store] safeStorage 不可用, 拒绝明文凭据落盘 (fail-closed)');
+      return null;
     }
     try {
       const cipher = safeStorage.encryptString(secret);
       return TOKEN_PREFIX + cipher.toString('base64');
     } catch (e) {
-      warn('encrypt-error', '[credential-store] 加密失败, 降级明文存储: ' + (e && e.message));
-      return secret;
+      warn('encrypt-error', '[credential-store] 加密失败, 拒绝明文凭据落盘 (fail-closed): ' + (e && e.message));
+      return null;
     }
   }
 
@@ -124,15 +127,19 @@ function createCredentialStore({ safeStorage, log } = {}) {
   /**
    * 加密单条连接记录: 仅处理 password/passphrase, 其余字段透传
    * (浅拷贝, 不修改原对象)。
+   * fail-closed: 任一敏感字段 encrypt 返回 null (加密不可用/失败) -> 整体返回 null,
+   * 表示该条记录加密失败 (上层据此拒绝写入); 非对象/数组仍原样返回。
    * @param {object} conn
-   * @returns {object}
+   * @returns {object|null}
    */
   function encryptRecord(conn) {
     if (!conn || typeof conn !== 'object' || Array.isArray(conn)) return conn;
     const out = Object.assign({}, conn);
     for (const field of SECRET_FIELDS) {
       if (typeof out[field] === 'string' && out[field] !== '') {
-        out[field] = encrypt(out[field]);
+        const enc = encrypt(out[field]);
+        if (enc === null) return null; // 加密失败: 整条记录拒绝 (fail-closed)
+        out[field] = enc;
       }
     }
     return out;
@@ -158,7 +165,8 @@ function createCredentialStore({ safeStorage, log } = {}) {
   /**
    * 旧配置自动迁移: 把明文 password/passphrase 加密为 token。
    * 幂等: 已加密 token 不再处理; 重复执行第二次 changed=false。
-   * 降级: safeStorage 不可用时视为无需迁移 (保持明文, 不回写, 避免每次加载重复改写)。
+   * fail-closed: 加密不可用时拒绝明文回写 (不迁移不回写, 避免明文落盘),
+   * 迁移仅当 safeStorage 可用时进行。
    * @param {object[]} list
    * @returns {{list: object[], changed: boolean}}
    */
@@ -185,7 +193,7 @@ function createCredentialStore({ safeStorage, log } = {}) {
 
     // 降级提示 (仅一次): 检测到存在凭据字段但加密不可用
     if (!canEncrypt && hasSecret) {
-      warn('downgrade', '[credential-store] safeStorage 不可用, 凭据以明文降级存储 (仅警告一次)');
+      warn('downgrade', '[credential-store] safeStorage 不可用, 拒绝明文凭据落盘 (fail-closed)');
     }
     if (changed) {
       const count = out.filter((c, i) => c !== arr[i]).length;

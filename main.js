@@ -22,7 +22,8 @@ const { pathToFileURL } = require('url');
 const { Client } = require('ssh2');
 const auditLog = require('./src/audit-log'); // 操作日志模块 (纯 node, 见 src/audit-log.js)
 // 连接凭据加密存储 (纯 node, 见 src/credential-store.js): 主进程 safeStorage 注入,
-// 仅负责 password/passphrase 的加解密/迁移, 渲染层 store:load/store:save 对外行为不变。
+// 仅负责 password/passphrase 的加解密/迁移; store:load 返回脱敏视图 (凭据仅存主进程),
+// store:save 由主进程加密落盘 (fail-closed, 任一记录加密失败即拒绝写入)。
 // auditLog 模块在文件顶部已引入 (此处仅引用模块对象, 实际调用发生在运行时, 无初始化顺序问题)。
 const credentialStore = require('./src/credential-store').createCredentialStore({
   safeStorage,
@@ -589,8 +590,8 @@ function resolveReconnectConfig(session) {
   const config = session.config;
   let base = config;
   try {
-    // loadConnections 返回解密后的明文记录
-    const stored = loadConnections().find((c) => (
+    // loadConnectionsRaw 返回解密后的明文记录 (主进程内部使用)
+    const stored = loadConnectionsRaw().find((c) => (
       c && c.host === config.host &&
       String(c.port) === String(config.port) &&
       c.username === config.username
@@ -1787,8 +1788,28 @@ function registerDocProtocol() {
 }
 
 // ---------- IPC 处理器 ----------
+// P0-3: 渲染层不持明文凭据。连接时按 connId 从磁盘解密补全空密码/口令 (仅主进程接触明文)
+function resolveAuthCredential(config) {
+  if (!config || typeof config !== 'object') return config;
+  const connId = config.connId;
+  const needPassword = config.authMethod === 'password' && !config.password;
+  const needPassphrase = config.authMethod === 'privateKey' && !config.passphrase;
+  if (!connId || (!needPassword && !needPassphrase)) return config;
+  const raw = loadConnectionsRaw();
+  const rec = raw.find((c) => c && c.id === connId);
+  if (!rec) return config;
+  const out = { ...config };
+  if (needPassword && typeof rec.password === 'string') out.password = rec.password;
+  if (needPassphrase && typeof rec.passphrase === 'string') out.passphrase = rec.passphrase;
+  return out;
+}
+
 ipcMain.handle('ssh:connect', (e, { sessionId, config }) => {
-  createSSHSession(e.sender.id, sessionId, config);
+  if (!config || typeof config !== 'object') return { ok: false, error: '参数不完整' };
+  if (config.authMethod === 'password' && !config.password && !config.connId) {
+    return { ok: false, error: '未提供密码' };
+  }
+  createSSHSession(e.sender.id, sessionId, resolveAuthCredential(config));
   return { ok: true };
 });
 
@@ -2443,7 +2464,8 @@ ipcMain.handle('doc:close', (e, filename) => {
 // ---------- 存储连接配置 (password/passphrase 经 safeStorage 加密落盘) ----------
 const STORE_FILE = path.join(app.getPath('userData'), 'connections.json');
 
-function loadConnections() {
+// 内部: 读取磁盘原始连接列表 (含密文) -> 迁移 -> 返回明文列表 (仅供主进程内部使用: 导出/连接补全)
+function loadConnectionsRaw() {
   let list = [];
   try {
     if (fs.existsSync(STORE_FILE)) {
@@ -2451,19 +2473,55 @@ function loadConnections() {
       if (Array.isArray(parsed)) list = parsed;
     }
   } catch (e) {}
-  // 旧明文配置自动迁移: 发现明文 password/passphrase -> 加密并回写 (幂等, 用户无感)
   const migrated = credentialStore.migrateIfNeeded(list);
   if (migrated.changed) saveConnections(migrated.list);
-  // 返回前解密: 渲染层拿到明文继续使用 (store:load 对外行为不变)
   return migrated.list.map((conn) => credentialStore.decryptRecord(conn));
 }
 
-function saveConnections(list) {
+// store:load 返回脱敏视图: password/passphrase 一律置空, 附 hasPassword/hasPassphrase 标记
+// (凭据只保留在主进程, 渲染层不持有明文; 连接时由 ssh:connect 按 connId 主进程解密补全)
+function loadConnections() {
+  const raw = loadConnectionsRaw();
+  return raw.map((conn) => ({
+    ...conn,
+    password: '',
+    passphrase: '',
+    hasPassword: !!(conn && typeof conn.password === 'string' && conn.password !== ''),
+    hasPassphrase: !!(conn && typeof conn.passphrase === 'string' && conn.passphrase !== ''),
+  }));
+}
+
+// fail-closed 保存: 任一记录加密失败 -> 拒绝整体写入 (不落明文)
+// 兼容: 渲染层提交的脱敏记录 (password='') 若磁盘已有原值 -> 沿用原密文 (留空保持不变)
+// opts.overwriteEmpty=true (config:import): 全量替换, 跳过「留空沿用」merge, 不继承磁盘旧凭据
+function saveConnections(list, opts) {
   try {
-    // 落盘前加密敏感字段 (encryptRecord 对已加密 token 幂等, 重复保存安全)
-    const encrypted = Array.isArray(list)
-      ? list.map((conn) => credentialStore.encryptRecord(conn))
-      : list;
+    const overwriteEmpty = !!(opts && opts.overwriteEmpty === true);
+    let existing = [];
+    if (!overwriteEmpty) {
+      try {
+        if (fs.existsSync(STORE_FILE)) {
+          const parsed = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
+          if (Array.isArray(parsed)) existing = parsed;
+        }
+      } catch (e) {}
+    }
+    const byId = new Map(existing.filter((c) => c && c.id).map((c) => [c.id, c]));
+    const merged = (Array.isArray(list) ? list : []).map((conn) => {
+      if (!conn || typeof conn !== 'object') return conn;
+      if (overwriteEmpty) return conn; // 全量替换: 直接按传入记录加密, 不沿用磁盘旧凭据
+      const old = byId.get(conn.id);
+      if (!old) return conn;
+      const out = { ...conn };
+      if (out.password === '') out.password = old.password;       // 留空沿用原密文
+      if (out.passphrase === '') out.passphrase = old.passphrase;
+      return out;
+    });
+    const encrypted = merged.map((conn) => credentialStore.encryptRecord(conn));
+    if (encrypted.some((c) => c === null)) {
+      // 加密不可用: 拒绝写入 (fail-closed), 绝不落明文
+      return { ok: false, error: '系统加密不可用，凭据保存被拒绝（为避免明文存储）' };
+    }
     fs.writeFileSync(STORE_FILE, JSON.stringify(encrypted, null, 2), 'utf8');
     return { ok: true };
   } catch (e) {
@@ -2485,7 +2543,7 @@ ipcMain.handle('settings:save', (e, settings) => {
 // ---------- 配置加密导出/导入 (Roadmap ⑤) ----------
 // 设计决策:
 // - 系统对话框 (保存/打开) 全部在主进程内完成; 渲染层只负责「输入密码 + 展示结果」。
-// - 导出: loadConnections() 得到解密后的明文 list -> configPortable.exportConfig 加密
+// - 导出: loadConnectionsRaw() 得到解密后的明文 list -> configPortable.exportConfig 加密
 //   (整文件加密, 不含明文凭据) -> showSaveDialog -> 写文件 -> 审计 config.export
 //   (target=文件名, 不含内容/密码)。
 // - 导入: showOpenDialog -> 读文件 -> 渲染层传入密码 -> importConfig 解密
@@ -2494,7 +2552,7 @@ ipcMain.handle('settings:save', (e, settings) => {
 // - 审计失败分支: error 仅记固定文案 (密码错误/格式无效/写入失败等), 不记密码/内容。
 ipcMain.handle('config:export', async (e, { password }) => {
   try {
-    const list = loadConnections(); // 解密后的明文连接数组
+    const list = loadConnectionsRaw(); // 解密后的明文连接数组 (主进程内部, 导出需真实数据)
     const res = configPortable.exportConfig(list, password);
     if (!res.ok) {
       auditLog.logAudit({ type: 'config.export', target: '配置导出', result: 'failure', detail: res.error });
@@ -2566,7 +2624,8 @@ ipcMain.handle('config:import', async (e, { password }) => {
       return res;
     }
     // 全量替换策略: 导入后覆盖现有连接配置 (渲染层已 confirm 提示「将覆盖现有连接」)
-    const saveRes = saveConnections(res.list);
+    // overwriteEmpty=true: 导入为全量替换, 不继承磁盘旧凭据 (跳过「留空沿用」merge, 避免旧密码被带入新记录)
+    const saveRes = saveConnections(res.list, { overwriteEmpty: true });
     if (!saveRes.ok) {
       auditLog.logAudit({ type: 'config.import', target: fileName, result: 'failure', detail: '保存配置失败' });
       return { ok: false, error: saveRes.error || '保存配置失败' };
@@ -2704,13 +2763,29 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: USE_SANDBOX,
     },
   });
   mainWin = win;
   registerQuitShortcut(win);
 
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
+
+  // P0-1 安全: 拦截渲染层导航与 window.open
+  // - xterm WebLinks 等 window.open: 一律拒绝新窗口, http(s) 链接转系统浏览器打开
+  // - will-navigate: 应用为纯本地 SPA, 阻止任何非 file: 协议导航 (防跳板/防钓鱼)
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(String(url || ''))) {
+      shell.openExternal(url).catch(() => {});
+    }
+    auditLog.logAudit({ type: 'window.open', target: String(url || '').slice(0, 200), result: 'blocked', detail: '新窗口打开已被拦截' });
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (String(url).startsWith('file://')) return; // 本地 SPA 自身, 放行
+    e.preventDefault();
+    auditLog.logAudit({ type: 'will-navigate', target: String(url || '').slice(0, 200), result: 'blocked', detail: '导航已被拦截' });
+  });
 
   // 生命周期: 关闭按钮/Alt+F4 -> 最小化到系统托盘 (隐藏窗口, 不退出进程, 不清理会话)。
   // 只有 isQuitting=true (托盘「退出」/ Ctrl+Q 触发的真退出) 时才放行关闭;
@@ -2732,10 +2807,15 @@ function createWindow() {
 }
 
 // 兼容模式: 任何 Windows 环境双击即用 (容器 / 远程桌面 / 老旧 GPU)
+// P0-2 安全: 默认启用 Chromium OS 级沙箱 (安全基线)。
+// 仅当显式设置 FGMSSH_NO_SANDBOX=1 (受限容器/远程桌面等无法跑沙箱的环境) 才降级关闭。
+const USE_SANDBOX = process.env.FGMSSH_NO_SANDBOX !== '1';
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-software-rasterizer');
-app.commandLine.appendSwitch('no-sandbox');
+if (!USE_SANDBOX) {
+  app.commandLine.appendSwitch('no-sandbox');
+}
 
 app.whenReady().then(() => {
   // 单实例锁, 防止多个实例 (重复启动时 second-instance 恢复既有主窗口)
