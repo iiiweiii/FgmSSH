@@ -1,40 +1,16 @@
-# Node
+# 前端
 node_modules/
-*.log
-
-# 构建产物
 dist/
-dist-*/
-build-out/
-builder-debug.yml
-asar-check-tmp/
 
-# electron-builder 缓存
-.builder-cache/
+# Tauri / Rust
+src-tauri/target/
 
-# npm 缓存残留
-_cacache/
-_logs/
-_update-notifier-last-checked
-
-# 系统文件
+# 编辑器/系统
+.vscode/
+.idea/
+*.log
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-
-# 本地开发杂项
-module-hits.txt
-smoke-*.js
-smoke-*.cjs
-/*.png
-# 私钥/凭据防护
-tests/hostkey*
-*.pem
-*.key
-!tests/hostkey-test*.js
-!tests/hostkey-store-test.js
-!tests/hostkey-verifier-test.js
-!tests/hostkey-e2e-test.js
+# 临时文件
+*.tmp

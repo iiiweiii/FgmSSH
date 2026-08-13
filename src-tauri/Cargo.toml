@@ -1,0 +1,77 @@
+[package]
+name = "fmgssh"
+version = "0.1.0"
+description = "FgmSSH Tauri v2 migration"
+authors = ["FgmSSH"]
+edition = "2021"
+
+# 纯 Rust 优先, 避免 C 依赖编译问题 (SPEC 第 5 节)。
+# 版本号使用宽松但合理的最新稳定范围; 由 cargo build 时解析。
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# SSH / SFTP (纯 Rust)
+# 注意: 代码按 russh 0.44.x 的 API 编写 (Channel<Msg> / channel.wait() / check_server_key 等)。
+# 0.45+ 的 API 变化较大 (Channel 泛型改为 Send: From<(ChannelId, ChannelMsg)> 等),
+# 因此锁定 0.44 大版本, 避免 cargo 解析到 0.45+ 导致大面积编译错误。
+# 若后续要升级 russh, 需按新 API 重写 ssh.rs / sftp.rs / tunnel.rs / monitor.rs。
+russh = "0.44"
+# 注意: russh-sftp 无 0.44 版本 (版本线为 0.3 -> 1.x -> 2.x)。
+# russh 0.44.1 官方 sftp 示例锁定的配套版本为 2.0.0-beta.2 (dev-dependencies 原文)。
+# 用 "=2.0.0-beta.2" 精确锁版: caret 的 prerelease 语义会取 2.0.0-beta.5, 避免 API 漂移。
+russh-sftp = "=2.0.0-beta.2"
+async-trait = "0.1"
+
+# DPAPI 凭据加密 (Windows): 仅列出用到的 feature
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Security_Cryptography",
+  "Win32_Foundation",
+  "Win32_Security_Credentials",
+  "Win32_System_Memory",
+] }
+
+# 非 Windows 平台: DPAPI 不可用, credential 模块降级 (encrypt 返回 None, fail-closed)
+
+# config-portable 兼容: AES-256-GCM + scrypt
+aes-gcm = "0.10"
+scrypt = "0.11"
+rand = "0.8"
+
+# 文件夹下载打包
+zip = "2"
+
+# 审计时间戳
+chrono = "0.4"
+# 审计脱敏正则 (纯 Rust)
+regex = "1"
+# 指纹/哈希 (纯 Rust)
+sha2 = "0.10"
+md5 = "0.7"
+
+# 更新检查 (rustls, 无 OpenSSL)
+ureq = { version = "2", features = ["tls"] }
+
+# base64 编解码
+base64 = "0.22"
+
+[lib]
+name = "fmgssh_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

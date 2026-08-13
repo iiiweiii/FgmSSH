@@ -2363,20 +2363,24 @@ async function renderDocPdf(doc) {
   const stage = el.querySelector('#pdfStage');
 
   try {
-    // 动态 import pdfjs: 相对路径基于文档 base (src/index.html) -> 项目 node_modules
-    const pdfjs = await import('../node_modules/pdfjs-dist/build/pdf.min.mjs');
+    // 动态 import pdfjs: Tauri/vite 适配 —— 用包标识符代替相对 node_modules 路径
+    // (原 Electron 版为 ../node_modules/pdfjs-dist/build/pdf.min.mjs, 基于 index.html 的
+    // document.baseURI; vite 打包下相对路径不可达, 改经包解析, dev/build 均可解析)。
+    const pdfjs = await import('pdfjs-dist/build/pdf.min.mjs');
     // blob worker: fetch worker 源码 -> Blob URL (CSP 需 worker-src blob:; 实测通过)
+    // Tauri/vite 适配: worker 源文件 URL 由 nimbus-bridge 经 vite `?url` 资产导入暴露为
+    // window.__PDFJS_WORKER_URL__ (dev/build 均为可 fetch 的同源地址), 取来转 Blob URL。
     let workerOk = false;
     try {
-      const workerUrl = new URL('../node_modules/pdfjs-dist/build/pdf.worker.min.mjs', document.baseURI).toString();
+      const workerUrl = window.__PDFJS_WORKER_URL__;
       const wr = await fetch(workerUrl);
       const code = await wr.text();
       pdfjs.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
       workerOk = true;
     } catch (err) {
       console.warn('[doc-pdf] worker 加载失败, 尝试无 worker 直连:', err);
-      // 兜底: workerSrc 指向相对路径, 由 pdfjs 自行尝试加载 (部分环境可工作)
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL('../node_modules/pdfjs-dist/build/pdf.worker.min.mjs', document.baseURI).toString();
+      // 兜底: 直接指向资产 URL, 由 pdfjs 自行尝试加载 (部分环境可工作)
+      pdfjs.GlobalWorkerOptions.workerSrc = window.__PDFJS_WORKER_URL__;
       workerOk = true;
     }
     const pdfDoc = await pdfjs.getDocument({ url: doc.url }).promise;
