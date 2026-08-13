@@ -1,0 +1,16 @@
+# 前端
+node_modules/
+dist/
+
+# Tauri / Rust
+src-tauri/target/
+
+# 编辑器/系统
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp

@@ -1,0 +1,28 @@
+{
+  "name": "fmgssh-tauri",
+  "productName": "FgmSSH",
+  "version": "1.1.0",
+  "description": "FgmSSH Tauri v2 迁移（前端复用 Electron 版 renderer.js，经 window.nimbus 桥接层适配）",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "author": "WorkBuddy",
+  "license": "MIT",
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "pdfjs-dist": "^4.10.38",
+    "mammoth": "^1.12.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

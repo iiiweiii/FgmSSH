@@ -1,0 +1,73 @@
+# FgmSSH 自动构建与发布 (GitHub Actions)
+# ============================================================
+# 触发方式:
+#   1) 推送 tag (v1.1.0 / v1.2.0 ...): 构建后自动创建 GitHub Release (草稿), 附 NSIS 安装包
+#   2) workflow_dispatch (仓库 Actions 页手动 "Run workflow"): 仅构建并上传 Artifact, 不发 Release
+# 产物: src-tauri/target/release/bundle/nsis/*-setup.exe (别人可直接下载安装)
+#
+# 说明:
+#   - runner 为 windows-latest (含 MSVC 工具链 + WebView2), 可直接连 crates.io, 无需国内镜像;
+#   - 项目内 .cargo/config.toml 是本地构建用的 rsproxy 镜像, CI 上删除以免影响 crates.io 直连;
+#   - npm 11 的 allow-scripts 策略可能拦截 esbuild postinstall, 已加手动就位二进制步骤 (幂等)。
+
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust (stable, msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup MSVC toolchain
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Remove local cargo mirror config (CI connects crates.io directly)
+        run: |
+          if (Test-Path .cargo) { Remove-Item -Recurse -Force .cargo }
+          if (Test-Path src-tauri/.cargo) { Remove-Item -Recurse -Force src-tauri/.cargo }
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Ensure esbuild binary in place (npm 11 allow-scripts may skip postinstall)
+        run: |
+          if (Test-Path node_modules/@esbuild/win32-x64/esbuild.exe) {
+            New-Item -ItemType Directory -Force node_modules/esbuild/bin | Out-Null
+            Copy-Item node_modules/@esbuild/win32-x64/esbuild.exe node_modules/esbuild/bin/esbuild.exe -Force
+          }
+          node node_modules/esbuild/bin/esbuild.exe --version
+
+      - name: Build & release (tauri)
+        uses: tauri-apps/tauri-action@v0
+        with:
+          tagName: v__VERSION__
+          releaseName: "FgmSSH v__VERSION__"
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: false
+          # 仅构建 + 上传 release 附件 (不自动创建 release 时, 产物仍作为 Artifact 保留)
+          # 需要 release 草稿: 推 tag 时 tauri-action 自动创建; 手动触发时仅出 Artifact
+          projectPath: .

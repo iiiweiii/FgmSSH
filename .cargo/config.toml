@@ -1,0 +1,11 @@
+# FgmSSH 构建专用 cargo 镜像配置 (rsproxy.cn, 国内可达)
+# 直连 index.crates.io / static.crates.io 在本网络环境下超时, 故替换为 rsproxy 稀疏索引,
+# 索引与 .crate 下载均走 rsproxy.cn (其 config.json 自带 dl 地址)。
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[net]
+retry = 3
