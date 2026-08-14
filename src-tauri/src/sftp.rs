@@ -74,7 +74,8 @@ pub struct SftpItem {
 pub struct SftpListResult {
     pub ok: bool,
     pub path: String,
-    pub items: Vec<SftpItem>,
+    /// 注意: 字段名为 entries (前端 renderer.js loadDir 读 res.entries; SPEC 写 items 系笔误)。
+    pub entries: Vec<SftpItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -342,7 +343,7 @@ pub async fn sftp_list(
     SftpListResult {
         ok: true,
         path: target,
-        items,
+        entries: items,
         error: None,
     }
 }
@@ -351,7 +352,7 @@ fn list_err(path: &str, error: &str) -> SftpListResult {
     SftpListResult {
         ok: false,
         path: path.to_string(),
-        items: Vec::new(),
+        entries: Vec::new(),
         error: Some(error.to_string()),
     }
 }
