@@ -1,0 +1,6 @@
+﻿fix: 修复 1.2.1 打包配置损坏 (BOM/编码)
+
+- 上一提交误用 PowerShell Set-Content 重写 JSON/TOML 文件,
+  引入 UTF-8 BOM 且中文被 GBK 编码损坏, 导致 npm/cargo 解析失败
+- 从 1.2.0 提交恢复原始文件, 重新应用版本号 1.2.1 (UTF-8 无 BOM)
+- 本地 release 构建 + 运行验证通过 (不再闪退)
