@@ -6,7 +6,7 @@
        Tauri 会把 tauri.conf.json 的 app.security.csp 与本文档 meta CSP 同时生效 (取交集)。
        注意: 后端需把 tauri.conf.json 的 csp 与本文档保持一致 (至少 connect-src/img-src 需含
        nimbus-preview: nimbus-doc:), 否则交集会拦掉自定义协议 fetch。详见 README-BUILD.md。 -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; font-src 'self' data:; img-src 'self' nimbus-preview: blob: data:; connect-src 'self' ipc: http://ipc.localhost nimbus-preview: nimbus-doc: blob: data:; worker-src 'self' blob:; child-src 'self' blob:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; font-src 'self' data:; img-src 'self' http://nimbus-preview.localhost nimbus-preview: blob: data:; connect-src 'self' ipc: http://ipc.localhost http://nimbus-preview.localhost http://nimbus-doc.localhost nimbus-preview: nimbus-doc: blob: data:; worker-src 'self' blob:; child-src 'self' blob:" />
   <title>FgmSSH</title>
   <!-- xterm 官方样式: 由 src/main.js 经 import '@xterm/xterm/css/xterm.css' 引入 (vite 打包)，
        含 .xterm-viewport{position:absolute} / .xterm-screen{position:relative} 等核心定位规则;

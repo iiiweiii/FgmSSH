@@ -593,6 +593,58 @@ fn transfer_err(error: &str) -> SftpTransferResult {
 // sftp_register_upload_paths（登记合法本地文件）
 // ---------------------------------------------------------------------------
 
+/// sftp_upload_data: 拖拽上传 (前端 File -> ArrayBuffer 字节流直传, 无本地磁盘路径)。
+/// 安全: 远端路径白名单校验 + 单文件大小上限; 数据源为渲染层 File 对象, 不经
+/// approved_local_paths (该机制仅约束有磁盘路径的对话框上传)。
+#[tauri::command]
+pub async fn sftp_upload_data(
+    app: AppHandle,
+    session_id: String,
+    remote_path: String,
+    bytes: Vec<u8>,
+) -> SftpSimpleResult {
+    let state = app.state::<AppState>();
+    if remote_path.is_empty() || bytes.is_empty() {
+        return simple_err("参数不完整");
+    }
+    if !is_safe_remote_path(&remote_path) {
+        return simple_err("路径包含非法段");
+    }
+    if bytes.len() > 100 * 1024 * 1024 {
+        return simple_err("文件过大，请使用「上传文件」按钮");
+    }
+    let sftp = match get_sftp(&state, &session_id).await {
+        Ok(s) => s,
+        Err(e) => return simple_err(&e),
+    };
+    use tokio::io::AsyncWriteExt;
+    let mut remote = match sftp
+        .open_with_flags(
+            &remote_path,
+            OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+        )
+        .await
+    {
+        Ok(f) => f,
+        Err(_) => return simple_err("上传失败"),
+    };
+    if remote.write_all(&bytes).await.is_err() {
+        return simple_err("上传失败");
+    }
+    if remote.flush().await.is_err() {
+        return simple_err("上传失败");
+    }
+    crate::audit::log(crate::audit::AuditEntry {
+        r#type: Some("sftp.upload".into()),
+        session: Some(session_id),
+        target: Some(remote_path),
+        result: Some("success".into()),
+        detail: Some(format!("拖拽上传 {} 字节", bytes.len())),
+        ..Default::default()
+    });
+    SftpSimpleResult { ok: true, error: None }
+}
+
 #[tauri::command]
 pub fn sftp_register_upload_paths(
     paths: Vec<String>,

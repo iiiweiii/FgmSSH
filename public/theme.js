@@ -146,8 +146,18 @@
       const terms = getTerminals();
       if (!Array.isArray(terms)) return;
       terms.forEach((term) => {
-        if (term && typeof term.setOption === 'function') {
-          try { term.setOption('theme', themeObj); } catch (e) { /* 单实例失败不影响其余 */ }
+        if (term && term.options) {
+          try {
+            // 修复: xterm 5.5 已移除 setOption/getOption API, 需直接赋值 options.theme
+            // (OptionsService proxy setter -> ThemeService -> DomRenderer._injectCss 更新
+            //  .xterm-rows 颜色规则)。原代码判断 typeof term.setOption === 'function'
+            // 恒为 false, 主题切换从未生效。
+            term.options.theme = themeObj;
+            // 强制重绘已渲染行 (DOM renderer 下新主题对旧行立即生效)
+            if (typeof term.refresh === 'function' && typeof term.rows === 'number' && term.rows > 0) {
+              term.refresh(0, term.rows - 1);
+            }
+          } catch (e) { /* 单实例失败不影响其余 */ }
         }
       });
     }

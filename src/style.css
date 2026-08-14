@@ -633,7 +633,8 @@ body.is-resizing * { cursor: col-resize !important; }
   overflow: hidden;
 }
 .terminal-host .xterm { height: 100%; display: block; }
-.xterm-viewport { background: transparent !important; }
+/* 修复: 原规则用 !important 强制 viewport 背景透明, 使 xterm 主题背景色 (#0e1116 深色 /
+   #ffffff 浅色) 永不生效, 终端颜色与主题不一致。删除后由 xterm 按主题自行设置背景。 */
 
 /* 终端欢迎覆盖层 (连接中/错误) */
 .term-overlay {

@@ -1935,7 +1935,8 @@ async function handleSftpDrop(e) {
     } catch (err) { /* 无法判型的项忽略 */ }
   }
 
-  // 逐文件取真实本地路径 (preload webUtils.getPathForFile, 同步; 去重)
+  // 逐文件取真实本地路径 (preload webUtils.getPathForFile, 同步; 去重)。
+  // Tauri 下 getPathForFile 恒返回空串 -> 退化为 File 字节流直传 (sftp_upload_data)。
   const localFiles = Array.from(dt.files);
   const localPaths = [];
   for (const file of localFiles) {
@@ -1944,9 +1945,37 @@ async function handleSftpDrop(e) {
     if (p && !localPaths.includes(p)) localPaths.push(p);
   }
 
+  // Tauri 拖拽上传: 拿不到磁盘路径, 直接读 File 字节流逐个上传到当前目录
   if (localPaths.length === 0) {
     if (dirCount > 0) toast('文件夹暂不支持拖拽上传', 'info');
-    else toast('无法获取拖拽文件路径', 'error');
+    sftpDragUploading = true;
+    let okCount = 0;
+    let failCount = 0;
+    try {
+      for (const file of localFiles) {
+        if (!file || typeof file.size !== 'number') continue;
+        const target = joinRemotePath(session.currentPath, file.name || 'file');
+        try {
+          const buf = await file.arrayBuffer();
+          const res = await window.nimbus.sftpUploadData(session.sessionId, target, buf);
+          if (res && res.ok) {
+            okCount++;
+          } else {
+            failCount++;
+            toast(`上传 ${file.name} 失败: ${(res && res.error) || '未知错误'}`, 'error');
+          }
+        } catch (err) {
+          failCount++;
+          toast(`上传 ${file.name} 失败: ${(err && err.message) || '未知错误'}`, 'error');
+        }
+      }
+      if (okCount > 0) {
+        toast(`已上传 ${okCount} 个文件${failCount > 0 ? `, ${failCount} 个失败` : ''}`, okCount > failCount ? 'success' : 'error');
+        refreshDir(session);
+      }
+    } finally {
+      sftpDragUploading = false;
+    }
     return;
   }
   if (dirCount > 0) toast(`已忽略 ${dirCount} 个文件夹 (暂不支持目录上传)`, 'info');
@@ -2706,7 +2735,10 @@ async function getOrFetchPreview(sessionId, remotePath, name) {
   const promise = (async () => {
     const res = await window.nimbus.previewOpen(sessionId, remotePath);
     if (!res || !res.ok) return res;
-    const filename = String(res.url).replace(/^nimbus-preview:\/\//, '');
+    // 兼容两种 URL 形式: nimbus-preview://xxx 与 WebView2 实际可用的 http://nimbus-preview.localhost/xxx
+    const filename = String(res.url)
+      .replace(/^nimbus-preview:\/\//, '')
+      .replace(/^http:\/\/nimbus-preview\.localhost\//, '');
     const displayName = res.name || name;
     let blobUrl = res.url; // fallback
     try {

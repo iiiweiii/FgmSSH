@@ -944,11 +944,18 @@ pub fn doc_close(filename: String) -> crate::CmdOk {
 
 // ================= URI scheme 协议回调辅助 (供 lib.rs 注册) =================
 
-/// 解析协议请求 URL 中的 filename (兼容 `nimbus-preview://<filename>` 与 `nimbus-preview:///<filename>`)。
+/// 解析协议请求 URL 中的 filename (兼容 `nimbus-preview://<filename>`、
+/// `nimbus-preview:///<filename>`、`nimbus-preview://localhost/<filename>` 以及
+/// Windows/WebView2 下实际到达的 `http://nimbus-preview.localhost/<filename>`)。
+/// 修复: 原实现未丢弃 host 段, WebView2 请求形如 http://nimbus-preview.localhost/xxx.png,
+/// 解析出的文件名带 "nimbus-preview.localhost/" 前缀, 校验含 '/' 被拒 -> 404, 预览全挂。
 /// 不依赖 url crate, 自实现百分号解码 (URL 路径段)。
 pub fn parse_protocol_filename(request_url: &str) -> Option<String> {
+    // 去掉 scheme 前缀 (:// 之前)
     let after = request_url.splitn(2, "://").nth(1)?;
-    let raw = after.trim_start_matches('/');
+    // 丢弃 host 段: 取第一个 '/' 之后的路径部分; 无 '/' 时 (nimbus-preview://name) 整段即文件名
+    let rest = after.splitn(2, '/').nth(1).unwrap_or(after);
+    let raw = rest.trim_start_matches('/');
     let raw = raw.split(['?', '#']).next().unwrap_or(raw);
     if raw.is_empty() {
         return None;

@@ -211,20 +211,23 @@ fn open_external(app: AppHandle, url: String) -> CmdOk {
 // ================= 入口 =================
 
 /// 构造 404 协议响应 (预览/文档未命中或非法文件名)。
-/// TODO(verify): tauri v2 中 `http::Response` 的 body 类型与 builder 返回值; 当前按
-/// `Vec<u8>` body 写, 若编译报期望 `Cow<'static, [u8]>` 则改 `Cow::Owned(...)`。
 fn http_not_found() -> Response<Vec<u8>> {
     Response::builder()
         .status(StatusCode::NOT_FOUND)
+        .header("Access-Control-Allow-Origin", "*")
         .body(Vec::new())
         .unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
 /// 构造 200 协议响应 (图片/文档字节流 + mime + 短期缓存)。
+/// 修复: 必须带 Access-Control-Allow-Origin —— 自定义协议 origin
+/// (http://nimbus-preview.localhost) 与页面 origin (http://tauri.localhost) 不同,
+/// 前端 fetch 读 txt/PDF 字节流会被 CORS 拦截 (Failed to fetch)。
 fn http_ok(body: Vec<u8>, mime: &'static str) -> Response<Vec<u8>> {
     Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", mime)
+        .header("Access-Control-Allow-Origin", "*")
         .header("Cache-Control", "max-age=3600")
         .body(body)
         .unwrap_or_else(|_| Response::new(Vec::new()))
@@ -311,6 +314,7 @@ pub fn run() {
             sftp::sftp_list,
             sftp::sftp_download,
             sftp::sftp_upload,
+            sftp::sftp_upload_data,
             sftp::sftp_register_upload_paths,
             sftp::sftp_mkdir,
             sftp::sftp_delete,

@@ -160,6 +160,8 @@ const nimbus = {
   sftpList: (sessionId, path) => guardedInvoke('sftp_list', { sessionId, path }),
   sftpDownload: (sessionId, remotePath, localPath) => guardedInvoke('sftp_download', { sessionId, remotePath, localPath }),
   sftpUpload: (sessionId, localPath, remotePath) => guardedInvoke('sftp_upload', { sessionId, localPath, remotePath }),
+  // 拖拽上传: File 字节流直传 (Tauri 前端拿不到拖拽文件磁盘路径, 走 ArrayBuffer)
+  sftpUploadData: (sessionId, remotePath, bytes) => guardedInvoke('sftp_upload_data', { sessionId, remotePath, bytes }),
   getPathForFile,
   sftpRegisterUploadPaths,
   sftpMkdir: (sessionId, path) => guardedInvoke('sftp_mkdir', { sessionId, path }),
@@ -175,12 +177,26 @@ const nimbus = {
   selectSavePath: (defaultName) => guardedInvoke('dialog_select_save_path', { defaultName }),
 
   // ---- 图片预览 ----
-  previewOpen: (sessionId, remotePath) => guardedInvoke('preview_open', { sessionId, remotePath }),
+  // 修复: WebView2 不支持非标准协议 (nimbus-preview://) 的请求 (img/fetch 全失败);
+  // wry 实际拦截的是 http://nimbus-preview.localhost/* 形式, 故把后端返回的 URL 转换。
+  previewOpen: async (sessionId, remotePath) => {
+    const r = await guardedInvoke('preview_open', { sessionId, remotePath });
+    if (r && r.ok && r.url) {
+      r.url = String(r.url).replace(/^nimbus-preview:\/\//, 'http://nimbus-preview.localhost/');
+    }
+    return r;
+  },
   previewClose: (filename) => guardedInvoke('preview_close', { filename }),
   previewSaveAs: (sessionId, remotePath) => guardedInvoke('preview_save_as', { sessionId, remotePath }),
 
   // ---- 内置文档查看器 ----
-  docOpen: (sessionId, remotePath) => guardedInvoke('doc_open', { sessionId, remotePath }),
+  docOpen: async (sessionId, remotePath) => {
+    const r = await guardedInvoke('doc_open', { sessionId, remotePath });
+    if (r && r.ok && r.url) {
+      r.url = String(r.url).replace(/^nimbus-doc:\/\//, 'http://nimbus-doc.localhost/');
+    }
+    return r;
+  },
   docLoadFull: (sessionId, filename) => guardedInvoke('doc_load_full', { sessionId, filename }),
   docSave: (sessionId, remotePath, content) => guardedInvoke('doc_save', { sessionId, remotePath, content }),
   docClose: (filename) => guardedInvoke('doc_close', { filename }),
