@@ -657,7 +657,7 @@ async function openSession(connConfig) {
 
   // 提交连接
   try {
-    await window.nimbus.connect(sessionId, {
+    const res = await window.nimbus.connect(sessionId, {
       host: connConfig.host,
       port: connConfig.port,
       username: connConfig.username,
@@ -676,6 +676,10 @@ async function openSession(connConfig) {
       // 主机密钥指纹校验 (Roadmap 第一梯队 ②, TOFU): 默认开 (主进程 hostKeyVerify !== false)
       hostKeyVerify: connConfig.hostKeyVerify !== false,
     });
+    // 修复: 连接失败时后端返回 {ok:false, error}, 需显式检查并展示错误 (否则一直转圈)
+    if (res && res.ok === false) {
+      setSessionError(session, res.error || '连接失败');
+    }
   } catch (e) {
     setSessionError(session, '无法发起连接: ' + e.message);
   }

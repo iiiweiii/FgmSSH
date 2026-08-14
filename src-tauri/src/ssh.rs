@@ -282,14 +282,27 @@ fn emit_data(app: &AppHandle, session_id: &str, data: &[u8]) {
     let _ = app.emit("ssh:data", payload);
 }
 
-/// 发 ssh:event (payload: {sessionId, type, data})。
+/// 发 ssh:event (payload: {sessionId, type, ...fields})。
+/// 修复: 前端 renderer.js 解构为 { sessionId, type, message, ...rest }, 期待扁平字段
+/// (如 attempt/maxAttempts/error/exitStatus), 原实现嵌套在 data 里导致前端取不到。
 fn emit_event(app: &AppHandle, session_id: &str, event_type: &str, data: serde_json::Value) {
-    let payload = serde_json::json!({
+    let mut payload = serde_json::json!({
         "sessionId": session_id,
         "type": event_type,
-        "data": data,
     });
+    if let Some(obj) = data.as_object() {
+        for (k, v) in obj {
+            payload[k] = v.clone();
+        }
+    } else if !data.is_null() {
+        payload["data"] = data;
+    }
     let _ = app.emit("ssh:event", payload);
+}
+
+/// 发连接成功事件 (前端等待 type==='ready' 才结束"正在连接"转圈状态)。
+fn emit_ready(app: &AppHandle, session_id: &str) {
+    emit_event(app, session_id, "ready", serde_json::json!({}));
 }
 
 // ================= 凭据补全 (store 解密) =================
@@ -474,7 +487,7 @@ async fn run_channel_loop(
                         emit_event(
                             &state.app,
                             &handle.id,
-                            "exit",
+                            "closed",
                             serde_json::json!({ "exitStatus": code }),
                         );
                     }
@@ -482,7 +495,7 @@ async fn run_channel_loop(
                         emit_event(
                             &state.app,
                             &handle.id,
-                            "exit",
+                            "closed",
                             serde_json::json!({ "reason": "exitSignal" }),
                         );
                     }
@@ -546,15 +559,15 @@ async fn run_session_runtime(
 
         // 异常断开: 判断是否自动重连。
         if !handle.reconnect_enabled {
-            emit_event(&state.app, &handle.id, "error", serde_json::json!({ "error": "连接已断开" }));
+            emit_event(&state.app, &handle.id, "error", serde_json::json!({ "message": "连接已断开" }));
             break;
         }
         if attempts >= handle.max_attempts {
             emit_event(
                 &state.app,
                 &handle.id,
-                "exit",
-                serde_json::json!({ "reason": "重连失败，已达最大尝试次数" }),
+                "reconnect-status",
+                serde_json::json!({ "status": "gaveup", "error": "重连失败，已达最大尝试次数" }),
             );
             break;
         }
@@ -564,8 +577,8 @@ async fn run_session_runtime(
         emit_event(
             &state.app,
             &handle.id,
-            "reconnecting",
-            serde_json::json!({ "attempt": attempts, "maxAttempts": handle.max_attempts }),
+            "reconnect-status",
+            serde_json::json!({ "status": "connecting", "attempt": attempts, "maxAttempts": handle.max_attempts }),
         );
         crate::audit::log(crate::audit::AuditEntry {
             r#type: Some("ssh.reconnect".into()),
@@ -577,6 +590,12 @@ async fn run_session_runtime(
 
         // 指数退避 1..32s (可被用户断开打断)。
         let delay = Duration::from_secs(1u64 << (attempts - 1).min(5));
+        emit_event(
+            &state.app,
+            &handle.id,
+            "reconnect-status",
+            serde_json::json!({ "status": "waiting", "attempt": attempts, "maxAttempts": handle.max_attempts }),
+        );
         tokio::select! {
             _ = tokio::time::sleep(delay) => {}
             _ = handle.cancel.notified() => { break; }
@@ -599,7 +618,9 @@ async fn run_session_runtime(
                 current = channel;
                 // 更新会话句柄 (所有克隆共享 inner, sftp/tunnel/monitor 立即使用新连接)。
                 handle.handle.replace(new_handle).await;
-                emit_event(&state.app, &handle.id, "reconnected", serde_json::json!({}));
+                emit_event(&state.app, &handle.id, "reconnect-status", serde_json::json!({ "status": "success" }));
+                // 重连成功同样要发 ready, 前端依赖它恢复"已连接"状态。
+                emit_ready(&state.app, &handle.id);
                 crate::audit::log(crate::audit::AuditEntry {
                     r#type: Some("ssh.reconnect".into()),
                     session: Some(handle.id.clone()),
@@ -612,8 +633,8 @@ async fn run_session_runtime(
                 emit_event(
                     &state.app,
                     &handle.id,
-                    "reconnect-failed",
-                    serde_json::json!({ "attempt": attempts, "maxAttempts": handle.max_attempts, "error": e }),
+                    "reconnect-status",
+                    serde_json::json!({ "status": "failed", "attempt": attempts, "maxAttempts": handle.max_attempts, "error": e }),
                 );
             }
         }
@@ -716,11 +737,14 @@ pub async fn ssh_connect(
     crate::audit::log(crate::audit::AuditEntry {
         r#type: Some("ssh.connect".into()),
         user: Some(format!("{}@{}", config.username, config.host)),
-        session: Some(session_id),
+        session: Some(session_id.clone()),
         target: Some(format!("{}:{}", config.host, config.port)),
         result: Some("success".into()),
         ..Default::default()
     });
+
+    // 发 ready 事件: 前端依赖 type==='ready' 结束"正在连接"转圈状态 (修复: 原实现从不发)。
+    emit_ready(&app, &session_id);
 
     crate::CmdOk::success()
 }
