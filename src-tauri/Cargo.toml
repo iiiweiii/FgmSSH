@@ -1,6 +1,6 @@
 [package]
 name = "fmgssh"
-version = "1.2.4"
+version = "1.2.5"
 description = "FgmSSH Tauri v2 migration"
 authors = ["FgmSSH"]
 edition = "2021"
