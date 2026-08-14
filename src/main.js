@@ -38,17 +38,12 @@ window.WebLinksAddon = { WebLinksAddon };
 import mammoth from 'mammoth/mammoth.browser.js';
 window.mammoth = (mammoth && mammoth.default) ? mammoth.default : mammoth;
 
-// ---------- 2.5 UMD 纯逻辑模块 (副作用导入, 修复生产构建 404) ----------
-// 修复: 原 index.html 以经典 script 引用这些文件, vite 无法将其打入 dist (生产构建
-// 下 404, window.FavCommands/HealthParser 等全局缺失导致应用崩溃)。改为副作用 import:
-// UMD 包裹在 ESM 作用域下 module 未定义 -> 走 else 分支挂到 window (self=window)。
-// 执行顺序在 renderer.js 导入之前, 与经典 script 语义一致。
-import './fav-commands.js';
-import './gpu-chart.js';
-import './theme.js';
-import './file-filter.js';
-import './editor-highlight.js';
-import './health-parser.js';
+// ---------- 2.5 UMD 纯逻辑模块 ----------
+// 修复: 6 个 UMD 模块 (FavCommands/GpuChart/NimbusTheme/FileFilter/EditorHighlight/
+// HealthParser) 改为 index.html 经典 script 从 public/ 加载。
+// 不能在此 import: rollup 会把 UMD 的 CJS 分支 (typeof module==="object"&&module.exports)
+// 转换为内部模拟对象, 使模块挂到 rollup 内部而非 window, 导致 window.NimbusTheme 等
+// 全局缺失 (主题/监控/搜索高亮等全部失效)。
 
 // ---------- 3. window.nimbus 桥接层 (核心适配) ----------
 import './nimbus-bridge.js';

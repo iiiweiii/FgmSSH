@@ -648,14 +648,20 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- ============ 脚本加载 (Tauri/vite 适配) ============
-       1) 6 个 UMD 纯逻辑模块 (FavCommands / GpuChart / NimbusTheme / FileFilter /
-          EditorHighlight / HealthParser) 改由 src/main.js 以副作用 import 方式加载
-          (vite 无法把无 type=module 的经典 script 打进 dist, 原写法生产构建会 404,
-          导致 window 全局缺失、应用崩溃), 浏览器解析期间先于 renderer.js 执行。
+       1) 经典 script: 6 个 UMD 纯逻辑模块从 public/ 加载 (vite 原样复制到 dist 根,
+          不经过 rollup 转换, UMD 正常挂载 window.FavCommands 等全局)。
+          注: 不能走 vite import —— rollup 会把 UMD 的 CJS 分支 (typeof module)
+          转换为内部对象, 导致模块挂到 rollup 内部而非 window, 全局缺失。
        2) module script: src/main.js 作为 vite 入口, 内部 import nimbus-bridge (window.nimbus)
           + renderer.js (原样复用), 并把 xterm/mammoth 挂到 window。
        CSP 说明: 生产构建保持严格 CSP (script-src 'self' blob:, 无 unsafe-eval);
        vite dev 下若 CSP 阻断 HMR/源码映射, 见 README-BUILD.md「开发模式」一节。 -->
+  <script src="/fav-commands.js"></script>
+  <script src="/gpu-chart.js"></script>
+  <script src="/theme.js"></script>
+  <script src="/file-filter.js"></script>
+  <script src="/editor-highlight.js"></script>
+  <script src="/health-parser.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -65,6 +65,8 @@ pub struct SftpItem {
     pub name: String,
     #[serde(rename = "type")]
     pub type_: String, // "file" | "dir"
+    /// 前端 renderer.js 用 entry.isDir 判断文件夹 (双击进入/图标/右键菜单), 原实现缺该字段。
+    pub is_dir: bool,
     pub size: u64,
     pub mtime: u64, // 毫秒时间戳（与 Electron normalizeMtime 语义一致）
 }
@@ -327,6 +329,7 @@ pub async fn sftp_list(
         items.push(SftpItem {
             name,
             type_: if is_dir { "dir" } else { "file" }.to_string(),
+            is_dir,
             size: attrs.size.unwrap_or(0),
             mtime: normalize_mtime(attrs.mtime.map(|v| v as u64)),
         });
