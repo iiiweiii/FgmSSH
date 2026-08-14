@@ -1,12 +1,12 @@
 [package]
 name = "fmgssh"
-version = "1.2.0"
+version = "1.2.1"
 description = "FgmSSH Tauri v2 migration"
 authors = ["FgmSSH"]
 edition = "2021"
 
-# 纯 Rust 优先, 避免 C 依赖编译问题 (SPEC 第 5 节)。
-# 版本号使用宽松但合理的最新稳定范围; 由 cargo build 时解析。
+# 绾?Rust 浼樺厛, 閬垮厤 C 渚濊禆缂栬瘧闂 (SPEC 绗?5 鑺?銆?
+# 鐗堟湰鍙蜂娇鐢ㄥ鏉句絾鍚堢悊鐨勬渶鏂扮ǔ瀹氳寖鍥? 鐢?cargo build 鏃惰В鏋愩€?
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
@@ -19,22 +19,22 @@ thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 
-# SSH / SFTP (纯 Rust)
-# 注意: 代码按 russh 0.44.x 的 API 编写 (Channel<Msg> / channel.wait() / check_server_key 等)。
-# 0.45+ 的 API 变化较大 (Channel 泛型改为 Send: From<(ChannelId, ChannelMsg)> 等),
-# 因此锁定 0.44 大版本, 避免 cargo 解析到 0.45+ 导致大面积编译错误。
-# 若后续要升级 russh, 需按新 API 重写 ssh.rs / sftp.rs / tunnel.rs / monitor.rs。
+# SSH / SFTP (绾?Rust)
+# 娉ㄦ剰: 浠ｇ爜鎸?russh 0.44.x 鐨?API 缂栧啓 (Channel<Msg> / channel.wait() / check_server_key 绛?銆?
+# 0.45+ 鐨?API 鍙樺寲杈冨ぇ (Channel 娉涘瀷鏀逛负 Send: From<(ChannelId, ChannelMsg)> 绛?,
+# 鍥犳閿佸畾 0.44 澶х増鏈? 閬垮厤 cargo 瑙ｆ瀽鍒?0.45+ 瀵艰嚧澶ч潰绉紪璇戦敊璇€?
+# 鑻ュ悗缁鍗囩骇 russh, 闇€鎸夋柊 API 閲嶅啓 ssh.rs / sftp.rs / tunnel.rs / monitor.rs銆?
 russh = "0.44"
-# 注意: russh-sftp 无 0.44 版本 (版本线为 0.3 -> 1.x -> 2.x)。
-# russh 0.44.1 官方 sftp 示例锁定的配套版本为 2.0.0-beta.2 (dev-dependencies 原文)。
-# 用 "=2.0.0-beta.2" 精确锁版: caret 的 prerelease 语义会取 2.0.0-beta.5, 避免 API 漂移。
+# 娉ㄦ剰: russh-sftp 鏃?0.44 鐗堟湰 (鐗堟湰绾夸负 0.3 -> 1.x -> 2.x)銆?
+# russh 0.44.1 瀹樻柟 sftp 绀轰緥閿佸畾鐨勯厤濂楃増鏈负 2.0.0-beta.2 (dev-dependencies 鍘熸枃)銆?
+# 鐢?"=2.0.0-beta.2" 绮剧‘閿佺増: caret 鐨?prerelease 璇箟浼氬彇 2.0.0-beta.5, 閬垮厤 API 婕傜Щ銆?
 russh-sftp = "=2.0.0-beta.2"
 async-trait = "0.1"
-# 修复: russh-sftp 2.0.0-beta.2 与 bytes >= 1.10 (Buf trait 新增 try_get_* 方法)
-# 产生方法歧义 (E0034, de.rs 中 try_get_u32/u64 多处), 精确锁 1.9.0 规避。
+# 淇: russh-sftp 2.0.0-beta.2 涓?bytes >= 1.10 (Buf trait 鏂板 try_get_* 鏂规硶)
+# 浜х敓鏂规硶姝т箟 (E0034, de.rs 涓?try_get_u32/u64 澶氬), 绮剧‘閿?1.9.0 瑙勯伩銆?
 bytes = "=1.9.0"
 
-# DPAPI 凭据加密 (Windows): 仅列出用到的 feature
+# DPAPI 鍑嵁鍔犲瘑 (Windows): 浠呭垪鍑虹敤鍒扮殑 feature
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
   "Win32_Security_Cryptography",
@@ -43,30 +43,30 @@ windows = { version = "0.58", features = [
   "Win32_System_Memory",
 ] }
 
-# 非 Windows 平台: DPAPI 不可用, credential 模块降级 (encrypt 返回 None, fail-closed)
+# 闈?Windows 骞冲彴: DPAPI 涓嶅彲鐢? credential 妯″潡闄嶇骇 (encrypt 杩斿洖 None, fail-closed)
 
-# config-portable 兼容: AES-256-GCM + scrypt
+# config-portable 鍏煎: AES-256-GCM + scrypt
 aes-gcm = "0.10"
 scrypt = "0.11"
 rand = "0.8"
-# aes-gcm 0.10.3 的 Nonce 直接泛型于 typenum 大小 (如 U12), 显式引入 typenum
+# aes-gcm 0.10.3 鐨?Nonce 鐩存帴娉涘瀷浜?typenum 澶у皬 (濡?U12), 鏄惧紡寮曞叆 typenum
 typenum = "1"
 
-# 文件夹下载打包
+# 鏂囦欢澶逛笅杞芥墦鍖?
 zip = "2"
 
-# 审计时间戳
+# 瀹¤鏃堕棿鎴?
 chrono = "0.4"
-# 审计脱敏正则 (纯 Rust)
+# 瀹¤鑴辨晱姝ｅ垯 (绾?Rust)
 regex = "1"
-# 指纹/哈希 (纯 Rust)
+# 鎸囩汗/鍝堝笇 (绾?Rust)
 sha2 = "0.10"
 md5 = "0.7"
 
-# 更新检查 (rustls, 无 OpenSSL)
+# 鏇存柊妫€鏌?(rustls, 鏃?OpenSSL)
 ureq = { version = "2", features = ["tls"] }
 
-# base64 编解码
+# base64 缂栬В鐮?
 base64 = "0.22"
 
 [lib]

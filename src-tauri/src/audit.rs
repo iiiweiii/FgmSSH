@@ -45,7 +45,9 @@ pub fn init(dir: PathBuf) {
     }
 
     // 后台 writer task: 串行追加 + 跨天自动重开文件。
-    tokio::spawn(async move {
+    // 修复: 直接用 tokio::spawn 会 panic ("there is no reactor running") —— setup 回调
+    // 不在 Tokio runtime 上下文; tauri::async_runtime::spawn 持有自己的 handle, 任意上下文可用。
+    tauri::async_runtime::spawn(async move {
         let mut writer: Option<std::fs::File> = None;
         let mut current_date: String = String::new();
         let mut rx = rx;

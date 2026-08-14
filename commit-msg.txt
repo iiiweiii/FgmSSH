@@ -1,0 +1,6 @@
+﻿fix: 修复启动闪退 (audit::init 在 setup 中直接 tokio::spawn 导致 panic)
+
+- 根因: setup 回调不在 Tokio runtime 上下文, tokio::spawn 触发
+  "there is no reactor running" panic, 进程以 101 退出 (闪退)
+- 修复: 改用 tauri::async_runtime::spawn (持有独立 handle, 任意上下文可用)
+- 版本号升至 1.2.1
