@@ -8,7 +8,10 @@ edition = "2021"
 # 纯 Rust 优先, 避免 C 依赖编译问题 (SPEC 第 5 节)。
 # 版本号使用宽松但合理的最新稳定范围; 由 cargo build 时解析。
 [dependencies]
-tauri = { version = "2", features = [] }
+# 注意: custom-protocol feature 必须启用, 否则 tauri::is_dev() 恒为 true,
+# release 版会去加载 devUrl (http://localhost:1420) 导致黑屏/拒绝连接。
+# tauri CLI 构建时自动附加该 feature, 但直接 cargo build 不会, 故显式声明。
+tauri = { version = "2", features = ["custom-protocol"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
