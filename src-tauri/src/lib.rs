@@ -47,13 +47,17 @@ impl CmdOk {
     }
 }
 
-/// 文件对话框返回 {ok, path?, error?}。
+/// 文件对话框返回 {ok, path?, paths?, error?}。
+/// 修复: dialog_select_file 返回 paths 数组 (多选), 前端 renderer.js triggerUpload
+/// 读取 res.paths; 原实现只返回单个 path, 导致上传按钮选完文件后静默放弃。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DialogResult {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paths: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -63,6 +67,15 @@ impl DialogResult {
         DialogResult {
             ok: true,
             path: Some(path),
+            paths: None,
+            error: None,
+        }
+    }
+    fn ok_many(paths: Vec<String>) -> Self {
+        DialogResult {
+            ok: true,
+            path: None,
+            paths: Some(paths),
             error: None,
         }
     }
@@ -70,6 +83,7 @@ impl DialogResult {
         DialogResult {
             ok: false,
             path: None,
+            paths: None,
             error: Some("已取消".to_string()),
         }
     }
@@ -102,16 +116,26 @@ async fn dialog_select_key(app: AppHandle) -> DialogResult {
     }
 }
 
-/// selectFile: 选择任意文件 (登记进 approved_local_paths 供 sftp_upload 消费)。
+/// selectFile: 选择任意文件 (多选, 登记进 approved_local_paths 供 sftp_upload 消费)。
 #[tauri::command]
 async fn dialog_select_file(app: AppHandle) -> DialogResult {
     let state = app.state::<AppState>();
-    let picked = app.dialog().file().blocking_pick_file();
-    match picked.and_then(|fp| fp.into_path().ok()) {
-        Some(p) => {
-            let s = p.to_string_lossy().to_string();
-            register_approved_path(state.inner(), &s);
-            DialogResult::ok(s)
+    let picked = app.dialog().file().blocking_pick_files();
+    match picked {
+        Some(files) => {
+            let mut paths: Vec<String> = Vec::new();
+            for fp in files {
+                if let Ok(p) = fp.into_path() {
+                    let s = p.to_string_lossy().to_string();
+                    register_approved_path(state.inner(), &s);
+                    paths.push(s);
+                }
+            }
+            if paths.is_empty() {
+                DialogResult::canceled()
+            } else {
+                DialogResult::ok_many(paths)
+            }
         }
         None => DialogResult::canceled(),
     }

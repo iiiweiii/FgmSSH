@@ -1,7 +1,7 @@
 {
   "name": "fmgssh-tauri",
   "productName": "FgmSSH",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "FgmSSH Tauri v2 迁移（前端复用 Electron 版 renderer.js，经 window.nimbus 桥接层适配）",
   "private": true,
   "type": "module",

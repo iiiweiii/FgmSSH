@@ -159,10 +159,17 @@ function normalizeMountPath(s) {
 // 磁盘解析诊断开关: NODE_ENV=development 或 NIMBUS_DEV_DIAG=1/true 时, parseDf 输出 df
 // 原始行/解析 rows/过滤结果/未匹配白名单到 console (main.js 默认置 NIMBUS_DEV_DIAG=1,
 // v23 起生产也开, 便于排查 df/白名单问题; 设 env=0 可关)。
+// 修复: 浏览器环境无 process (WebView2), 直接引用 process.env 会抛 ReferenceError,
+// 导致 parseDf -> parseMonitorResults 整体中断, 监控面板无数据。
 function dfDiagEnabled() {
-  return process.env.NODE_ENV === 'development' ||
-    process.env.NIMBUS_DEV_DIAG === '1' ||
-    process.env.NIMBUS_DEV_DIAG === 'true';
+  try {
+    return typeof process !== 'undefined' && !!process.env &&
+      (process.env.NODE_ENV === 'development' ||
+        process.env.NIMBUS_DEV_DIAG === '1' ||
+        process.env.NIMBUS_DEV_DIAG === 'true');
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
