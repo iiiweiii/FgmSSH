@@ -448,6 +448,7 @@ body.is-resizing * { cursor: col-resize !important; }
   position: relative;
 }
 .conn-item:hover { background: var(--bg-hover); }
+.conn-item.pinned { border-left: 2px solid var(--accent); padding-left: 8px; }
 .conn-item.active {
   background: var(--accent-soft);
   border-color: rgba(79, 140, 255, 0.35);
@@ -466,9 +467,21 @@ body.is-resizing * { cursor: col-resize !important; }
 .conn-item.active .conn-icon { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .conn-info { flex: 1; min-width: 0; }
+.conn-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.conn-name-row .conn-name { min-width: 0; }
+.conn-pin-label {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 1.4;
+}
 .conn-name { font-size: 12.8px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .conn-detail { font-size: 11px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
 
+.conn-pin,
 .conn-del {
   width: 24px; height: 24px;
   border: none; background: transparent;
@@ -477,7 +490,11 @@ body.is-resizing * { cursor: col-resize !important; }
   display: none; align-items: center; justify-content: center;
   cursor: pointer; flex-shrink: 0;
 }
-.conn-item:hover .conn-del { display: flex; }
+.conn-pin { margin-left: 2px; }
+.conn-pin.is-pinned { display: flex; color: var(--accent); }
+.conn-item:hover .conn-del,
+.conn-item:hover .conn-pin { display: flex; }
+.conn-pin:hover { color: var(--accent); background: var(--accent-soft); }
 .conn-del:hover { color: var(--red); background: rgba(255, 93, 93, 0.12); }
 
 /* ============ 新建连接按钮 ============ */

@@ -116,7 +116,7 @@
 
       <!-- ============ 连接列表入口 (可展开抽屉) ============ -->
       <div class="sidebar-conn-entry">
-        <button id="btnConnections" class="btn-connections" title="连接列表">
+        <button id="btnConnections" class="btn-connections" title="连接列表 (Ctrl+K 搜索)">
           <span class="conn-entry-label">连接列表</span>
           <span class="conn-entry-badge" id="connCountBadge">0</span>
           <svg class="conn-entry-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
@@ -132,7 +132,7 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
               </svg>
-              <input id="searchInput" type="text" placeholder="搜索连接..." />
+              <input id="searchInput" type="text" placeholder="搜索连接..." aria-label="搜索连接" />
             </div>
             <div class="conn-drawer-tools">
               <button id="btnExportConfig" class="btn-ghost conn-tool-btn" title="将全部连接配置加密导出为备份文件">
@@ -165,7 +165,7 @@
       <div class="tabbar" id="tabbar">
         <div class="tabs" id="tabs"></div>
         <div class="tabbar-actions">
-          <button class="icon-btn" id="btnFav" title="命令收藏">
+          <button class="icon-btn" id="btnFav" title="命令收藏 (Ctrl+Shift+F)">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
           </button>
           <button class="icon-btn" id="btnTunnel" title="端口转发隧道">
@@ -217,7 +217,7 @@
       <div class="fav-panel" id="favPanel" style="display:none;">
         <div class="fav-panel-header">
           <span class="fav-panel-title">命令收藏</span>
-          <span class="fav-panel-hint">点击命令发送到当前终端</span>
+          <span class="fav-panel-hint">点击发送；{{变量}} 会在发送前询问</span>
           <button class="icon-btn fav-close" id="favClose" title="关闭">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
@@ -225,7 +225,7 @@
         <div class="fav-list" id="favList"></div>
         <div class="fav-add">
           <input id="favNameInput" type="text" placeholder="名称 (可选)" spellcheck="false" maxlength="60" />
-          <input id="favCmdInput" type="text" placeholder="命令, 如: tail -f /var/log/app.log" spellcheck="false" maxlength="2000" />
+          <input id="favCmdInput" type="text" placeholder="命令，例如 tail -f {{logPath}}" spellcheck="false" maxlength="2000" />
           <button class="btn-primary fav-add-btn" id="favAddBtn">添加</button>
         </div>
       </div>

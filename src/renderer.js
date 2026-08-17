@@ -13,6 +13,9 @@ let fullscreen = false;
 let currentSftpSessionId = null; // 当前在侧边栏 SFTP 面板展示的会话 (全局单一实例)
 let ctxMenuTarget = null;        // SFTP 文件右键菜单当前目标 { sessionId, entry }; 菜单关闭时清空
 
+// 纯前端偏好：连接置顶不写入加密连接配置，避免改变后端存储契约。
+const PINNED_CONNECTIONS_STORAGE = 'fgmssh.pinnedConnections';
+
 // Roadmap 第三梯队 ①: SFTP 文件搜索/过滤 状态 (面板为全局单一实例, 关键字全局共享)
 let sftpSearchKeyword = '';      // 客户端即时过滤关键字 (空 = 显示全部)
 let sftpSearchRecursive = false; // 递归搜索开关 (服务端 find)
@@ -48,6 +51,34 @@ function toast(message, type = 'info') {
 
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function loadPinnedConnectionIds() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PINNED_CONNECTIONS_STORAGE) || '[]');
+    return new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string') : []);
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function savePinnedConnectionIds(ids) {
+  try {
+    localStorage.setItem(PINNED_CONNECTIONS_STORAGE, JSON.stringify([...ids].slice(0, 100)));
+  } catch (_) { /* localStorage 不可用时仅本次会话失效 */ }
+}
+
+function toggleConnectionPin(id) {
+  const ids = loadPinnedConnectionIds();
+  if (ids.has(id)) {
+    ids.delete(id);
+    toast('已取消置顶连接', 'info');
+  } else {
+    ids.add(id);
+    toast('已置顶连接', 'success');
+  }
+  savePinnedConnectionIds(ids);
+  renderConnectionList();
 }
 
 // 归一化挂载点字符串 (与 src/health-parser.js normalizeMountPath 语义一致, 保证两侧一致):
@@ -181,13 +212,33 @@ function sendFavCommand(ts) {
     toast('请先连接会话', 'info');
     return;
   }
-  favCommands.send(item.cmd).then((res) => {
+  const cmd = expandCommandTemplate(item.cmd);
+  if (cmd === null) return;
+  favCommands.send(cmd).then((res) => {
     if (res && res.ok === false && res.error === 'no_session') {
       toast('请先连接会话', 'info');
     } else if (res && res.ok === false) {
       toast('发送命令失败', 'error');
     }
   }).catch(() => {});
+}
+
+// 使用 {{name}}，避免改变原有 shell 环境变量语义。
+// 模板值只在发送前驻留在内存中，不写入收藏或连接配置。
+function expandCommandTemplate(command) {
+  const names = [...new Set([...String(command).matchAll(/\{\{([A-Za-z][A-Za-z0-9_]{0,31})\}\}/g)].map((m) => m[1]))];
+  if (names.length === 0) return command;
+  if (names.length > 10) {
+    toast('命令模板变量不能超过 10 个', 'error');
+    return null;
+  }
+  let expanded = command;
+  for (const name of names) {
+    const value = window.prompt('输入 ' + name + ' 的值', '');
+    if (value === null) return null;
+    expanded = expanded.split('{{' + name + '}}').join(value);
+  }
+  return expanded;
 }
 
 // 添加收藏: 空命令不添加
@@ -301,13 +352,29 @@ function toggleConnDrawer() {
   else openConnDrawer();
 }
 
+function openConnectionSearch() {
+  openConnDrawer();
+  const input = $('#searchInput');
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+function canUseGlobalShortcut(target) {
+  return !(target && target.closest && target.closest('input, textarea, [contenteditable="true"], .xterm'));
+}
+
 // 渲染连接列表到抽屉容器, 并更新侧边栏入口的计数徽标
 function renderConnectionList() {
   const list = $('#connDrawerList');
   const keyword = searchKeyword.toLowerCase();
-  const filtered = connections.filter((c) =>
-    !keyword || c.name.toLowerCase().includes(keyword) || c.host.toLowerCase().includes(keyword)
-  );
+  const pinnedIds = loadPinnedConnectionIds();
+  const filtered = connections.filter((c) => {
+    const name = String(c.name || '').toLowerCase();
+    const host = String(c.host || '').toLowerCase();
+    return !keyword || name.includes(keyword) || host.includes(keyword);
+  }).sort((a, b) => Number(pinnedIds.has(b.id)) - Number(pinnedIds.has(a.id)));
 
   // 更新入口按钮计数徽标
   const badge = $('#connCountBadge');
@@ -322,18 +389,27 @@ function renderConnectionList() {
 
   list.innerHTML = filtered.map((c) => {
     const isActive = sessions.has(c.id);
+    const pinned = pinnedIds.has(c.id);
+    const id = escapeHtml(String(c.id || ''));
+    const name = escapeHtml(String(c.name || '未命名连接'));
+    const user = escapeHtml(String(c.username || ''));
+    const host = escapeHtml(String(c.host || ''));
+    const port = escapeHtml(String(c.port || 22));
     return `
-      <div class="conn-item ${isActive ? 'active' : ''}" data-conn-id="${c.id}" title="连接 ${c.host}:${c.port}">
+      <div class="conn-item ${isActive ? 'active' : ''} ${pinned ? 'pinned' : ''}" data-conn-id="${id}" title="连接 ${host}:${port}">
         <div class="conn-icon">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 10h5M7 14h8"/>
           </svg>
         </div>
         <div class="conn-info">
-          <div class="conn-name">${escapeHtml(c.name)}</div>
-          <div class="conn-detail">${escapeHtml(c.username)}@${escapeHtml(c.host)}:${c.port}</div>
+          <div class="conn-name-row"><div class="conn-name">${name}</div>${pinned ? '<span class="conn-pin-label">置顶</span>' : ''}</div>
+          <div class="conn-detail">${user}@${host}:${port}</div>
         </div>
-        <button class="conn-del" data-del-id="${c.id}" title="删除连接">
+        <button class="conn-pin ${pinned ? 'is-pinned' : ''}" data-pin-id="${id}" aria-pressed="${pinned}" title="${pinned ? '取消置顶' : '置顶连接'}">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="${pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
+        </button>
+        <button class="conn-del" data-del-id="${id}" title="删除连接">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
         </button>
       </div>`;
@@ -342,12 +418,18 @@ function renderConnectionList() {
   // 事件绑定: 点击连接 -> 打开/切换会话并收起抽屉
   list.querySelectorAll('.conn-item').forEach((item) => {
     item.addEventListener('click', (e) => {
-      if (e.target.closest('.conn-del')) return;
+      if (e.target.closest('.conn-del, .conn-pin')) return;
       const conn = connections.find((c) => c.id === item.dataset.connId);
       if (conn) {
         openSession(conn);
         closeConnDrawer();
       }
+    });
+  });
+  list.querySelectorAll('.conn-pin').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleConnectionPin(btn.dataset.pinId);
     });
   });
   list.querySelectorAll('.conn-del').forEach((btn) => {
@@ -3929,6 +4011,17 @@ async function init() {
 
   // 快捷键
   document.addEventListener('keydown', (e) => {
+    const modifier = e.ctrlKey || e.metaKey;
+    if (modifier && e.key.toLowerCase() === 'k' && canUseGlobalShortcut(e.target)) {
+      e.preventDefault();
+      openConnectionSearch();
+      return;
+    }
+    if (modifier && e.shiftKey && e.key.toLowerCase() === 'f' && canUseGlobalShortcut(e.target)) {
+      e.preventDefault();
+      toggleFavPanel();
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
       e.preventDefault();
       openModal();
