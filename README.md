@@ -1,15 +1,15 @@
 # FgmSSH
 
-现代化界面的 Windows SSH 客户端：终端、SFTP 文件管理、服务器监控、端口转发与安全的凭据管理。基于 **Tauri v2** 重构，单文件更轻量（预计 8–15MB，相比旧 Electron 版 ~80MB）。
+现代化界面的 Windows SSH 客户端：终端、SFTP 文件管理、服务器监控、端口转发与安全的凭据管理。基于 **Tauri v2** 重构，相比旧 Electron 版显著减小体积；`v1.2.7` 的 NSIS 安装包约为 5 MB。
 
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white)](https://v2.tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-stable-dea584?logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#开源许可)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)]()
+[![Build & Release](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml/badge.svg)](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml)
 
-> **当前状态**：Tauri v2 版已完成构建验证（`cargo check` / `tauri build` 通过，产出 NSIS 安装包）。
-> 构建期间修复了原源码的编译错误与若干前后端契约问题（详见提交记录）；GitHub Actions 已配置，
-> 推送 `v*` tag 即自动打包并发布到 Releases。
+> **当前版本：v1.2.7**。Tauri v2 版已完成 Windows CI 构建验证并产出 NSIS 安装包。
+> 推送 `v*` tag 会触发 GitHub Actions 自动构建与上传 Release 草稿；经发布者核验后再公开发布。
 
 ## 特性
 
@@ -20,7 +20,8 @@
 - **内置预览**：图片（jpg/png/gif/webp/svg）、PDF、DOCX 在线预览
 - **内置文本编辑**：文本类文件内置编辑器，语法高亮，可保存回远端
 - **配置加密导出 / 导入**：AES-256-GCM + scrypt 口令加密备份（`.fgm`）
-- **常用命令收藏**：本地收藏常用命令，一键发送
+- **常用命令收藏**：本地收藏常用命令，一键发送；支持 `{{变量}}` 模板，在发送前临时输入参数
+- **连接效率功能**：连接置顶（仅保存在本机 UI 偏好中）、`Ctrl+K` 快速搜索连接、`Ctrl+Shift+F` 打开命令收藏
 - **浅色 / 深色主题**：全局主题切换
 - **更新检查**：通过 GitHub Releases 检查新版本，仅提示、不自动下载 / 升级
 
@@ -40,14 +41,15 @@ FgmSSH 将安全作为一等公民，以下是本项目的重点设计：
 
 ## 截图
 
-<!-- 截图占位：在此处插入主界面（终端）、SFTP 面板、服务器监控、主机密钥确认弹窗等截图（PNG），建议放 2–4 张。 -->
+界面包含终端工作区、SFTP 侧栏、连接抽屉、健康监控和主机密钥确认弹窗。欢迎提交截图或使用体验反馈。
 
 ## 快速开始
 
 ### 直接下载
 
-<!-- 截图占位/待补充：Tauri v2 版本安装包尚未发布，Release 就绪后在此补充下载链接。当前可先从源码构建。 -->
-![Uploading image.png…]()
+从 [GitHub Releases](https://github.com/iiiweiii/FgmSSH/releases) 下载最新已公开发布的 Windows NSIS 安装包（文件名形如 `FgmSSH_<版本>_x64-setup.exe`）。
+
+> Release 在构建完成后会先以草稿形式创建；请仅从已公开发布的版本下载。
 
 
 ### 从源码构建
@@ -65,7 +67,7 @@ npm run tauri dev      # 开发模式（启动 vite + 编译 Rust + 打开窗口
 npm run tauri build    # 生产构建（产物在 src-tauri/target/release/bundle/）
 ```
 
-> 更详细的构建说明、已知适配点与 `TODO(verify)` 复核清单见 [README-BUILD.md](README-BUILD.md)；IPC 契约见 [SPEC.md](SPEC.md)。
+> 更详细的构建与迁移说明见 [README-BUILD.md](README-BUILD.md)；IPC 契约见 [SPEC.md](SPEC.md)。
 
 ## 技术栈
 
@@ -113,6 +115,14 @@ fmgssh-tauri/
 - **拖拽上传**：Tauri / WebView2 下前端无法取得拖拽 File 的真实磁盘路径，拖到 SFTP 面板会提示改用「上传文件」对话框（详见 [README-BUILD.md](README-BUILD.md)）
 - **SSH Agent 认证**：当前版本暂不支持 SSH Agent 认证方式（支持密码 / 私钥）
 - **系统托盘**：尚未实现（计划中）
+
+## v1.2.7 更新内容
+
+- 新增连接置顶，置顶偏好仅保存于本机前端，不影响连接加密配置
+- 常用命令支持 `{{变量}}` 模板，值仅在发送前临时输入，不会写入收藏记录
+- 新增 `Ctrl+K` 连接搜索与 `Ctrl+Shift+F` 命令收藏快捷键；终端输入区不拦截这两个快捷键
+- 优化连接抽屉与命令收藏面板的视觉层级、悬停反馈和输入提示
+- GitHub Actions 已成功生成 Windows NSIS 安装包
 
 ## 历史版本
 
