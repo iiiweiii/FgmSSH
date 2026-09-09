@@ -3826,7 +3826,7 @@ async function init() {
   $('#btnConnections').addEventListener('click', toggleConnDrawer);
   $('#btnNewDrawer').addEventListener('click', openModal);
   $('#btnEmptyNew').addEventListener('click', openModal);
-  $('#btnPlus').addEventListener('click', openModal);
+  // 工具栏「+」新建连接按钮已移除 (保留 空状态/抽屉 的新建入口与 Ctrl+N 快捷键)
   $('#btnCloseModal').addEventListener('click', closeModal);
   $('#btnCancel').addEventListener('click', closeModal);
   $('#btnConnect').addEventListener('click', handleConnect);
