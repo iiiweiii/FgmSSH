@@ -1937,7 +1937,6 @@ body.terminal-fullscreen .terminal-host { padding: 0 8px; }
   background: var(--bg-sidebar);
   flex-shrink: 0;
 }
-.sftp-search-icon { color: var(--text-faint); flex-shrink: 0; }
 .sftp-search-input {
   flex: 1;
   min-width: 0;
@@ -1952,10 +1951,15 @@ body.terminal-fullscreen .terminal-host { padding: 0 8px; }
 }
 .sftp-search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .sftp-search-input::placeholder { color: var(--text-faint); }
+/* 递归搜索按钮: 图标形态 (悬停/激活态由 btn-ghost + .active 提供, 图标继承 currentColor) */
 .sftp-search-recursive {
   flex-shrink: 0;
-  padding: 3px 9px;
-  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border-radius: var(--radius-sm);
 }
 .sftp-search-recursive.active {

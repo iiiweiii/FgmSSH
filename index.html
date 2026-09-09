@@ -54,9 +54,10 @@
              即时过滤: 对已加载的当前目录条目做不区分大小写子串过滤 (纯渲染层);
              递归搜索: 主进程 exec find 递归列出匹配文件, 结果回填下方结果列表。 -->
         <div class="sftp-searchbar">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="sftp-search-icon"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
           <input class="sftp-search-input" id="sftpSearchInput" type="text" placeholder="过滤当前目录 (Esc 清空)" spellcheck="false" autocomplete="off" />
-          <button class="btn-ghost sftp-search-recursive" id="sftpSearchRecursive" title="递归搜索当前目录 (需服务器支持 find, maxdepth 3)">递归</button>
+          <button class="btn-ghost sftp-search-recursive" id="sftpSearchRecursive" title="递归搜索当前目录 (需服务器支持 find, maxdepth 3)" aria-label="递归搜索当前目录">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </button>
         </div>
 
         <!-- Roadmap 第三梯队 ①: 递归搜索结果列表 (默认隐藏; 仅递归搜索开启且有结果时显示) -->
