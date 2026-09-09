@@ -613,6 +613,41 @@ function syncScreenToContent(session) {
   alignScreenToContent(session.hostEl, session.term);
 }
 
+// ============ 终端尺寸上报 (远端 PTY resize 同步) ============
+// 背景 (bug 修复): 主进程 establish_session 请求 PTY 时硬编码 80x24, 注释期望
+// 「前端随后会 resize」——但 Tauri 迁移后前端从未调用 window.nimbus.resize
+// (桥接层与后端 ssh_resize 一直存在, 只是没有调用点; connect 参数里的 rows/cols
+// 后端 ConnectConfig 也不接收)。结果远端 PTY 恒为 80 列, 而本地 xterm 列宽通常不同,
+// 一旦命令行超过 80 列 (输入过长内容), 远端 readline 按 80 列换行/重绘, 与本地实际
+// 布局错位, 表现为「删除时光标乱跑、内容错乱」。重连成功重建的 PTY 同样回到 80x24。
+// 修复: ① xterm 尺寸变化 (首次 fit / 窗口缩放 / 侧边栏拖拽 / 全屏切换) 经 term.onResize
+//       上报主进程 (防抖, 连续变化只报最终值);
+//       ② 连接成功 / 重连成功 (ready) 时强制上报一次当前尺寸 (覆盖连接期上报被丢弃的场景)。
+const RESIZE_REPORT_DELAY = 60; // 防抖窗口 (ms): 拖拽/连续 fit 只上报最终尺寸
+
+function reportTerminalSize(session, force) {
+  if (!session || !session.term) return;
+  const rows = session.term.rows;
+  const cols = session.term.cols;
+  if (!(rows > 0 && cols > 0) || !isFinite(rows) || !isFinite(cols)) return;
+  // 幂等: 尺寸未变且非强制 -> 跳过; force=true (ready) 时无条件重报,
+  // 覆盖「连接中上报被后端丢弃 / 重连重建 80x24 PTY」等场景。
+  if (!force && session._lastReportedSize &&
+      session._lastReportedSize[0] === rows && session._lastReportedSize[1] === cols) {
+    return;
+  }
+  session._lastReportedSize = [rows, cols];
+  if (!window.nimbus || typeof window.nimbus.resize !== 'function') return;
+  clearTimeout(session._resizeTimer);
+  session._resizeTimer = setTimeout(() => {
+    // 会话已关闭 / 未连接 (重连中) -> 丢弃 (ready 时会重新强制上报)
+    if (!sessions.has(session.sessionId)) return;
+    const cur = sessions.get(session.sessionId);
+    if (!cur || cur.status !== 'connected' || !cur.term) return;
+    window.nimbus.resize(session.sessionId, cur.term.rows, cur.term.cols).catch(() => {});
+  }, force ? 0 : RESIZE_REPORT_DELAY);
+}
+
 // 遍历所有会话对终端执行 fit (窗口尺寸变化 / 侧边栏宽度拖拽结束后调用)
 function fitAllTerminals() {
   const seen = new Set();
@@ -706,6 +741,10 @@ async function openSession(connConfig) {
     fileEntryMap: null,     // name -> entry 索引 (事件委托用)
     fileReqSeq: 0,          // 目录加载请求序号 (竞态防护)
   };
+
+  // xterm 尺寸变化 (首次 fit / 窗口缩放 / 侧边栏拖拽 / 全屏切换) -> 远端 PTY resize
+  // (见 reportTerminalSize 注释; 修复长命令行输入/删除时因远端尺寸失配导致的错乱)
+  term.onResize(() => reportTerminalSize(session));
 
   // 初次 fit + viewport 重置: 统一走 syncScreenToContent 保护 (校验容器尺寸与 cols/rows,
   // 非法自动延迟重试), 确保下方 connect 上报的 rows/cols 为有效值, 避免首次渲染空白/偏移
@@ -1054,6 +1093,9 @@ function wireIPC() {
       session.tabEl.classList.remove('connecting');
       session.tabEl.classList.add('connected');
       updateStatus('ok', '已连接');
+      // 连接/重连成功: 强制上报当前终端尺寸 (初始连接与断线重连重建的远端 PTY 均为 80x24,
+      // 尺寸失配会导致长命令行编辑时光标/内容错乱, 见 reportTerminalSize 注释)
+      reportTerminalSize(session, true);
       // 焦点守卫: 文档查看器可见时 -> 不调用 activateSession,
       // 仅更新标签状态, 避免后台终端 ready 抢焦点把刚打开的文档查看器隐藏 (回归 P1)
       if (!shouldSkipSessionFocus()) {
