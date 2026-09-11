@@ -65,7 +65,7 @@ fmgssh-tauri/
 | storeLoad / storeSave | `store_load` / `store_save` | → 脱敏视图（password/passphrase='' + hasPassword） / {list} → {ok, error?}（fail-closed） |
 | settingsLoad / settingsSave | `settings_load` / `settings_save` | → settings / {settings} → {ok} |
 | configExport / configImport | `config_export` / `config_import` | {password} → {ok, count?, error?} |
-| auditLog / auditQuery | `audit_log` / `audit_query` | {entry} → {ok} / {filters} → {ok, total, items} |
+| auditLog / auditQuery | `audit_log` / `audit_query` | {entry} → {ok} / {filters} → {ok, total, items, types}（types = 本次扫描到的全部操作类型，供前端动态生成类型筛选项） |
 | openExternal(url) | `open_external` | {url} → {ok}（**仅放行 http/https**，其余拒绝） |
 | updateCheck | `update_check` | → {ok, hasUpdate?, current?, latest?, url?} |
 

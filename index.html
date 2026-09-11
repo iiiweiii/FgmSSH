@@ -423,29 +423,10 @@
           </button>
         </div>
         <div class="audit-filters">
+          <!-- 类型选项由 renderer.renderAuditTypeOptions 按后端返回的真实 type 动态生成
+               (硬编码选项会与日志实际 type 不一致, 导致筛不到任何记录) -->
           <select id="auditTypeFilter" class="audit-select" title="按操作类型筛选">
             <option value="">全部类型</option>
-            <option value="connect">connect 连接</option>
-            <option value="disconnect">disconnect 断开</option>
-            <option value="sftp.list">sftp.list 列目录</option>
-            <option value="sftp.cd">sftp.cd 切换目录</option>
-            <option value="sftp.upload">sftp.upload 上传</option>
-            <option value="sftp.download">sftp.download 下载</option>
-            <option value="sftp.downloadFolder">sftp.downloadFolder 下载ZIP</option>
-            <option value="sftp.mkdir">sftp.mkdir 新建文件夹</option>
-            <option value="sftp.rename">sftp.rename 重命名</option>
-            <option value="sftp.delete">sftp.delete 删除</option>
-            <option value="doc.open">doc.open 打开文档</option>
-            <option value="doc.save">doc.save 保存文档</option>
-            <option value="doc.close">doc.close 关闭文档</option>
-            <option value="preview.open">preview.open 图片预览</option>
-            <option value="preview.saveAs">preview.saveAs 预览另存</option>
-            <option value="tunnel.start">tunnel.start 隧道建立</option>
-            <option value="tunnel.stop">tunnel.stop 隧道停止</option>
-            <option value="tunnel.error">tunnel.error 隧道错误</option>
-            <option value="config.export">config.export 配置导出</option>
-            <option value="config.import">config.import 配置导入</option>
-            <option value="audit.panel">audit.panel 面板操作</option>
           </select>
           <select id="auditResultFilter" class="audit-select" title="按结果筛选">
             <option value="">全部结果</option>
@@ -459,7 +440,6 @@
             <option value="500">500 条</option>
           </select>
           <button class="btn-ghost audit-btn" id="auditRefreshBtn">刷新</button>
-          <button class="btn-ghost audit-btn" id="auditClearFilterBtn">清空</button>
         </div>
       </div>
       <div class="audit-body" id="auditBody">

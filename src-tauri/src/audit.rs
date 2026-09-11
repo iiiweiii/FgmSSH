@@ -290,6 +290,9 @@ pub struct AuditQueryResult {
     pub ok: bool,
     pub total: usize,
     pub items: Vec<serde_json::Value>,
+    /// 本次扫描到的全部操作类型 (去重升序), 供前端动态生成「类型」筛选项,
+    /// 避免前端硬编码选项与日志实际 type 不一致导致筛选永远为空。
+    pub types: Vec<String>,
 }
 
 fn parse_ts(v: &serde_json::Value) -> Option<i64> {
@@ -401,7 +404,7 @@ fn match_entry(obj: &serde_json::Value, f: &AuditQueryFilters, from_ms: Option<i
 /// 查询审计日志: 读文件 -> 过滤 -> 按 ts 降序 -> 分页。
 pub fn query(filters: &AuditQueryFilters) -> AuditQueryResult {
     let Some(core_guard) = AUDIT.get() else {
-        return AuditQueryResult { ok: true, total: 0, items: vec![] };
+        return AuditQueryResult { ok: true, total: 0, items: vec![], types: vec![] };
     };
     let core = core_guard.lock().unwrap();
 
@@ -411,6 +414,8 @@ pub fn query(filters: &AuditQueryFilters) -> AuditQueryResult {
     let to_ms = filters.to.as_ref().and_then(parse_ts);
 
     let mut entries: Vec<serde_json::Value> = vec![];
+    // 类型集合: 从扫描到的全部条目收集 (不受 type 筛选影响, 否则选中某一类型后下拉会塌缩成单项)
+    let mut type_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for file in collect_log_files(&core.dir, from_ms, to_ms) {
         let content = match std::fs::read_to_string(&file) {
             Ok(c) => c,
@@ -427,6 +432,11 @@ pub fn query(filters: &AuditQueryFilters) -> AuditQueryResult {
             };
             if !obj.is_object() {
                 continue;
+            }
+            if let Some(t) = obj.get("type").and_then(serde_json::Value::as_str) {
+                if !t.is_empty() {
+                    type_set.insert(t.to_string());
+                }
             }
             if match_entry(&obj, filters, from_ms, to_ms) {
                 entries.push(obj);
@@ -446,5 +456,5 @@ pub fn query(filters: &AuditQueryFilters) -> AuditQueryResult {
         entries[offset..(offset + limit).min(total)].to_vec()
     };
 
-    AuditQueryResult { ok: true, total, items }
+    AuditQueryResult { ok: true, total, items, types: type_set.into_iter().collect() }
 }

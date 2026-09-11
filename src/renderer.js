@@ -3172,6 +3172,57 @@ async function openAuditPanel() {
   refreshAuditLog();
 }
 
+// 操作类型的中文标签 (仅用于下拉展示; 未收录的类型直接显示原始 type)
+const AUDIT_TYPE_LABELS = {
+  'ssh.connect': '连接',
+  'ssh.disconnect': '断开',
+  'ssh.reconnect': '重连',
+  'sftp.list': '列目录',
+  'sftp.cd': '切换目录',
+  'sftp.upload': '上传',
+  'sftp.download': '下载',
+  'sftp.downloadFolder': '下载 ZIP',
+  'sftp.mkdir': '新建文件夹',
+  'sftp.rename': '重命名',
+  'sftp.delete': '删除',
+  'doc.open': '打开文档',
+  'doc.loadFull': '加载全部',
+  'doc.save': '保存文档',
+  'doc.close': '关闭文档',
+  'preview.open': '图片预览',
+  'preview.saveAs': '预览另存',
+  'tunnel.start': '隧道建立',
+  'tunnel.stop': '隧道停止',
+  'tunnel.error': '隧道错误',
+  'config.export': '配置导出',
+  'config.import': '配置导入',
+  'audit.panel': '面板操作',
+};
+
+// 用后端返回的真实类型重建「类型」下拉:
+// 背景: 原实现把类型硬编码在 index.html, 与日志实际写入的 type 不一致 (日志写的是
+// ssh.connect/ssh.disconnect/ssh.reconnect 等, 选项却是 connect/disconnect),
+// 后端按精确匹配, 导致选中这些项永远筛不出记录 (表现为"分类不起作用")。
+// 现改为按每次查询返回的 types 动态生成, 保证选项与真实数据一一对应;
+// 并在重建后恢复原选择 (类型仍存在时), 否则回到「全部类型」。
+function renderAuditTypeOptions(types) {
+  const sel = $('#auditTypeFilter');
+  if (!sel || !Array.isArray(types)) return; // 旧后端无 types 字段 -> 保持现有选项不变
+  const list = types.filter((t) => typeof t === 'string' && t !== '');
+  const current = sel.value;
+  const options = ['<option value="">全部类型</option>'].concat(list.map((t) => {
+    const label = AUDIT_TYPE_LABELS[t] ? `${t} ${AUDIT_TYPE_LABELS[t]}` : t;
+    return `<option value="${escapeHtml(t)}">${escapeHtml(label)}</option>`;
+  }));
+  // 类型集合未变化时跳过重建, 避免无谓的 DOM 抖动/焦点丢失 (按完整列表比较, 不能用数量)
+  const key = list.join('\u0000');
+  if (sel.dataset.typesKey !== key) {
+    sel.innerHTML = options.join('');
+    sel.dataset.typesKey = key;
+  }
+  sel.value = list.includes(current) ? current : '';
+}
+
 function closeAuditPanel() {
   $('#auditOverlay').style.display = 'none';
 }
@@ -3218,6 +3269,8 @@ async function refreshAuditLog() {
 
   const items = (res && Array.isArray(res.items)) ? res.items : [];
   const total = (res && typeof res.total === 'number') ? res.total : 0;
+  // 按后端返回的真实类型重建类型下拉 (见 renderAuditTypeOptions 注释)
+  renderAuditTypeOptions(res && res.types);
   $('#auditCount').textContent = `共 ${total} 条`;
 
   if (items.length === 0) {
@@ -4023,12 +4076,6 @@ async function init() {
   $('#auditTypeFilter').addEventListener('change', refreshAuditLog);
   $('#auditResultFilter').addEventListener('change', refreshAuditLog);
   $('#auditLimitSelect').addEventListener('change', refreshAuditLog);
-  $('#auditClearFilterBtn').addEventListener('click', () => {
-    $('#auditTypeFilter').value = '';
-    $('#auditResultFilter').value = '';
-    $('#auditLimitSelect').value = '100';
-    refreshAuditLog();
-  });
   $('#auditOverlay').addEventListener('click', (e) => {
     if (e.target === $('#auditOverlay')) closeAuditPanel();
   });
