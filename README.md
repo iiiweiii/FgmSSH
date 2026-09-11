@@ -7,7 +7,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)]()
 [![Build & Release](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml/badge.svg)](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml)
 
-> **当前版本：v1.2.8**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
+> **当前版本：v1.2.9**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
 
 ## 特性
 
@@ -19,7 +19,8 @@
 - **内置文本编辑**：文本类文件内置编辑器，语法高亮，可保存回远端
 - **配置加密导出 / 导入**：AES-256-GCM + scrypt 口令加密备份（`.fgm`）
 - **常用命令收藏**：本地收藏常用命令，一键发送；支持 `{{变量}}` 模板，发送前临时输入参数
-- **设置面板**：当前版本、一键检查更新（跳转 Releases）、界面语言切换（简体中文 / English）
+- **设置面板**：当前版本、一键检查更新、界面语言切换（简体中文 / English）
+- **应用内更新**：启动后自动检查，发现新版本可在软件内一键下载安装并自动重启（无需手动下载安装包）
 - **中英双语**：全界面文案可切换，静态界面与运行时提示一并生效
 - **连接效率**：连接置顶、`Ctrl+K` 快速搜索连接、`Ctrl+Shift+F` 命令收藏
 - **浅色 / 深色主题**：全局主题切换
@@ -66,6 +67,12 @@ npm run tauri build    # 生产构建（产物在 src-tauri/target/release/bundl
 - **拖拽上传**：Tauri / WebView2 下前端无法取得拖拽 File 的真实磁盘路径，拖到 SFTP 面板会提示改用「上传文件」对话框
 - **SSH Agent 认证**：暂不支持（当前支持密码 / 私钥）
 - **系统托盘**：尚未实现（计划中）
+
+## v1.2.9 更新内容
+
+- **应用内更新**：新增启动后静默检查（有新版本显示顶栏徽标，点击打开设置面板）
+- 设置面板新增「下载并安装更新」：应用内流式下载（带进度条）→ sha256 校验 → 自替换 → 自动重启，无需手动下载安装包
+- CI 额外发布便携版 exe（`FgmSSH_<版本>_x64-portable.exe`）作为应用内更新载荷，同时保留 NSIS 安装包
 
 ## v1.2.8 更新内容
 

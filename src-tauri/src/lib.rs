@@ -298,6 +298,19 @@ pub fn run() {
             // preview/doc: 设置 preview_tmp 目录 + 启动清理过期文件 + 清理 orphan 注册。
             let _ = preview_doc::init(app.handle());
             app.manage(state);
+
+            // 启动期静默检查更新 (延迟 5s, 不阻塞启动): 有新版本则广播 update:check,
+            // 前端据此显示顶栏徽标 / 填充设置面板状态。失败静默 (离线/超时/无 release)。
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let res = update::run_check(&handle, None, None, None).await;
+                    if res.ok {
+                        let _ = tauri::Emitter::emit(&handle, "update:check", &res);
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -347,6 +360,8 @@ pub fn run() {
             sftp::sftp_search,
             sftp::sftp_download_folder,
             update::update_check,
+            update::update_download,
+            update::update_apply,
             portable::config_export,
             portable::config_import,
         ])

@@ -1926,18 +1926,18 @@ function showUpdateBadge(payload) {
 }
 
 // 绑定更新检查事件 (init 时调用一次; 测试沙箱无 onUpdateCheck 时静默跳过)
+// 启动期后端静默检查一次: 有新版本 -> 顶栏徽标 + 填充设置面板状态 (含附件列表)
 function initUpdateCheck() {
   if (!window.nimbus || typeof window.nimbus.onUpdateCheck !== 'function') return;
-  window.nimbus.onUpdateCheck((payload) => showUpdateBadge(payload));
+  window.nimbus.onUpdateCheck((payload) => {
+    settingsUpdateState = payload;
+    try { updateSettingsPanel(); } catch (e) {}
+    showUpdateBadge(payload);
+  });
   const btn = $('#updateBadge');
   if (btn) {
-    btn.addEventListener('click', () => {
-      if (!updateBadgePayload) return;
-      const url = updateBadgePayload.url || '';
-      if (url && window.nimbus.openExternal) {
-        window.nimbus.openExternal(url).catch(() => {});
-      }
-    });
+    // 点击徽标 -> 直接打开设置面板 (可在软件内完成下载与安装)
+    btn.addEventListener('click', () => openSettingsPanel());
   }
 }
 
@@ -3171,7 +3171,76 @@ function initPreviewEvents() {
 // ============ 设置面板 (版本 / 更新检查 / 语言) ============
 // 入口: 标签栏齿轮按钮; 形态与「命令收藏」面板一致 (右上浮层)。
 // 版本号由构建期注入 (vite define: __APP_VERSION__); 更新检查复用后端 update_check。
-let settingsUpdateState = null; // 最近一次检查结果 { ok, hasUpdate, current, latest, url }
+let settingsUpdateState = null; // 最近一次检查结果 { ok, hasUpdate, current, latest, url, assets }
+let settingsUpdating = false;   // 下载/安装进行中 (防重入)
+
+// 挑选用于应用内更新的附件: 便携版 exe 最优 (直接自替换), 其次 NSIS 安装包
+function pickUpdateAsset(res) {
+  const list = (res && Array.isArray(res.assets)) ? res.assets : [];
+  const exes = list.filter((a) => a && typeof a.url === 'string' && /\.exe$/i.test(a.name || ''));
+  if (exes.length === 0) return null;
+  return exes.find((a) => /portable/i.test(a.name))
+    || exes.find((a) => /setup/i.test(a.name))
+    || exes[0];
+}
+
+// 更新进度条 (show=false 时隐藏)
+function setUpdateProgress(show, pct, text) {
+  const wrap = $('#settingsProgress');
+  const fill = $('#settingsProgressFill');
+  const label = $('#settingsProgressText');
+  if (!wrap) return;
+  wrap.style.display = show ? 'flex' : 'none';
+  if (fill) fill.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+  if (label) label.textContent = text || '';
+}
+
+// 应用内下载并安装更新: 下载 -> 校验 -> 自替换 -> 自动重启 (本进程退出)
+async function startUpdateInstall() {
+  if (settingsUpdating) return;
+  const res = settingsUpdateState;
+  if (!res || res.ok !== true || !res.hasUpdate) return;
+  const asset = pickUpdateAsset(res);
+  if (!asset) {
+    toast(T('未找到可用的更新包'), 'error');
+    return;
+  }
+  if (!confirm(T('确定现在下载并安装 v{0} 吗？应用将自动重启。', res.latest || ''))) return;
+
+  settingsUpdating = true;
+  updateSettingsPanel();
+  setUpdateProgress(true, 0, T('正在下载 {0}%', 0));
+
+  let dl;
+  try {
+    dl = await window.nimbus.updateDownload(asset.url, asset.sha256 || null);
+  } catch (e) {
+    dl = { ok: false, error: (e && e.message) || T('未知错误') };
+  }
+  if (!dl || !dl.ok || !dl.path) {
+    settingsUpdating = false;
+    setUpdateProgress(false);
+    updateSettingsPanel();
+    toast(T('下载失败: {0}', (dl && dl.error) || T('未知错误')), 'error');
+    return;
+  }
+
+  // 下载完成: 应用更新 (校验 exe 头 -> 启动自替换助手 -> 本进程退出并自动重启)
+  const doneMsg = T('下载完成，正在安装并重启...');
+  setUpdateProgress(true, 100, doneMsg);
+  const status = $('#settingsUpdateStatus');
+  if (status) status.textContent = doneMsg;
+  try {
+    const applied = await window.nimbus.updateApply(dl.path);
+    if (applied && applied.ok === false) throw new Error(applied.error || T('未知错误'));
+  } catch (e) {
+    settingsUpdating = false;
+    setUpdateProgress(false);
+    updateSettingsPanel();
+    toast(T('安装失败: {0}', (e && e.message) || T('未知错误')), 'error');
+  }
+  // 成功路径: 进程随后退出并重启, 无需恢复 UI
+}
 
 function openSettingsPanel() {
   const panel = $('#settingsPanel');
@@ -3216,6 +3285,15 @@ function updateSettingsPanel() {
     link.style.display = url ? '' : 'none';
     link.dataset.url = url;
   }
+  // 应用内更新入口: 仅在有更新且未在更新中时显示
+  const installWrap = $('#settingsInstallWrap');
+  if (installWrap) {
+    const canInstall = !!(settingsUpdateState && settingsUpdateState.ok === true
+      && settingsUpdateState.hasUpdate && !settingsUpdating);
+    installWrap.style.display = canInstall ? '' : 'none';
+  }
+  const installBtn = $('#settingsInstallBtn');
+  if (installBtn) installBtn.disabled = settingsUpdating;
 }
 
 // 手动检查更新 (结果仅展示, 不自动下载)
@@ -3938,6 +4016,21 @@ async function init() {
   $('#btnSettings').addEventListener('click', toggleSettingsPanel);
   $('#settingsClose').addEventListener('click', closeSettingsPanel);
   $('#settingsCheckUpdateBtn').addEventListener('click', checkUpdate);
+  $('#settingsInstallBtn').addEventListener('click', startUpdateInstall);
+  // 下载进度 (后端 update:progress 事件)
+  if (typeof window.nimbus.onUpdateProgress === 'function') {
+    window.nimbus.onUpdateProgress((p) => {
+      if (!settingsUpdating) return;
+      const received = (p && p.received) || 0;
+      const total = p && p.total;
+      if (total) {
+        const pct = Math.min(100, Math.round((received / total) * 100));
+        setUpdateProgress(true, pct, T('正在下载 {0}%', pct));
+      } else {
+        setUpdateProgress(true, 0, T('正在下载...'));
+      }
+    });
+  }
   $('#settingsUpdateLink').addEventListener('click', (e) => {
     const url = e.currentTarget.dataset.url || '';
     if (url && window.nimbus && window.nimbus.openExternal) window.nimbus.openExternal(url).catch(() => {});

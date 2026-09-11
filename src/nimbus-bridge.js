@@ -53,6 +53,7 @@ const cbTable = {
   hostKeyConfirm: new Set(),  // onHostKeyConfirm <- hostkey:confirm
   hostKeyMismatch: new Set(), // onHostKeyMismatch <- hostkey:mismatch
   updateCheck: new Set(),     // onUpdateCheck <- update:check
+  updateProgress: new Set(),  // onUpdateProgress <- update:progress (应用内下载更新)
 };
 
 // 若后端按 SPEC 第 3 节把 sftp 进度作为独立事件发射, 归一化为 renderer.js 期望的
@@ -69,6 +70,7 @@ function startEventBridge() {
     { tauriEvent: 'hostkey:confirm', dispatch: (p) => cbTable.hostKeyConfirm.forEach((cb) => safeCall(cb, p)) },
     { tauriEvent: 'hostkey:mismatch', dispatch: (p) => cbTable.hostKeyMismatch.forEach((cb) => safeCall(cb, p)) },
     { tauriEvent: 'update:check', dispatch: (p) => cbTable.updateCheck.forEach((cb) => safeCall(cb, p)) },
+    { tauriEvent: 'update:progress', dispatch: (p) => cbTable.updateProgress.forEach((cb) => safeCall(cb, p)) },
     // 兼容: SPEC 独立进度事件 -> 归入 onEvent (后端若已走 ssh:event 则不重复触发)
     { tauriEvent: 'sftp-upload-progress', dispatch: (p) => cbTable.event.forEach((cb) => safeCall(cb, normalizeProgress('sftp-upload-progress', p))) },
     { tauriEvent: 'sftp-download-progress', dispatch: (p) => cbTable.event.forEach((cb) => safeCall(cb, normalizeProgress('sftp-download-progress', p))) },
@@ -220,8 +222,12 @@ const nimbus = {
   auditLog: (entry) => guardedInvoke('audit_log', { entry }),
   auditQuery: (filters) => guardedInvoke('audit_query', { filters }),
 
-  // ---- 更新检查 ----
+  // ---- 更新检查 / 应用内下载更新 ----
   updateCheck: () => guardedInvoke('update_check', {}),
+  // 下载更新包到临时目录 (进度经 update:progress 事件上报)
+  updateDownload: (url, sha256) => guardedInvoke('update_download', { url, sha256: sha256 || null }),
+  // 应用更新: 校验 -> 自替换 -> 自动重启 (本进程随后退出)
+  updateApply: (path) => guardedInvoke('update_apply', { path }),
 
   // ---- 主机密钥指纹 (TOFU) ----
   hostKeyAccept: (sessionId, override) => guardedInvoke('hostkey_accept', { sessionId, override }),
@@ -231,6 +237,7 @@ const nimbus = {
   onData: makeOn('data'),
   onEvent: makeOn('event'),
   onUpdateCheck: makeOn('updateCheck'),
+  onUpdateProgress: makeOn('updateProgress'),
   onHostKeyConfirm: makeOn('hostKeyConfirm'),
   onHostKeyMismatch: makeOn('hostKeyMismatch'),
 };
