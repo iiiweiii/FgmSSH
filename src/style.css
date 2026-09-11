@@ -139,27 +139,6 @@ html, body {
 body.is-resizing { user-select: none; cursor: col-resize; }
 body.is-resizing * { cursor: col-resize !important; }
 
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 16px 18px 12px;
-  flex-shrink: 0;
-}
-
-.brand-logo {
-  width: 38px; height: 38px;
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #4f8cff, #7c5cff);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(79, 140, 255, 0.35);
-}
-
-.brand-text { display: flex; flex-direction: column; line-height: 1.25; }
-.brand-name { font-size: 15.5px; font-weight: 700; letter-spacing: 0.2px; }
-.brand-sub { font-size: 11px; color: var(--text-faint); }
-
 /* ============ SFTP 文件浏览面板 (侧边栏, 全局单一实例) ============ */
 .sftp-panel {
   flex: 1;
