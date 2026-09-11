@@ -12,6 +12,7 @@ let searchKeyword = '';
 let fullscreen = false;
 let currentSftpSessionId = null; // 当前在侧边栏 SFTP 面板展示的会话 (全局单一实例)
 let ctxMenuTarget = null;        // SFTP 文件右键菜单当前目标 { sessionId, entry }; 菜单关闭时清空
+let editingConnId = null;        // 连接弹窗: 当前编辑的连接 id (null = 新建)
 
 // 纯前端偏好：连接置顶不写入加密连接配置，避免改变后端存储契约。
 const PINNED_CONNECTIONS_STORAGE = 'fgmssh.pinnedConnections';
@@ -438,6 +439,9 @@ function renderConnectionList() {
         <button class="conn-pin ${pinned ? 'is-pinned' : ''}" data-pin-id="${id}" aria-pressed="${pinned}" title="${pinned ? '取消置顶' : '置顶连接'}">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="${pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
         </button>
+        <button class="conn-edit" data-edit-id="${id}" title="${T('编辑连接')}">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        </button>
         <button class="conn-del" data-del-id="${id}" title="${T('删除连接')}">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
         </button>
@@ -447,7 +451,7 @@ function renderConnectionList() {
   // 事件绑定: 点击连接 -> 打开/切换会话并收起抽屉
   list.querySelectorAll('.conn-item').forEach((item) => {
     item.addEventListener('click', (e) => {
-      if (e.target.closest('.conn-del, .conn-pin')) return;
+      if (e.target.closest('.conn-del, .conn-pin, .conn-edit')) return;
       const conn = connections.find((c) => c.id === item.dataset.connId);
       if (conn) {
         openSession(conn);
@@ -459,6 +463,17 @@ function renderConnectionList() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleConnectionPin(btn.dataset.pinId);
+    });
+  });
+  // 编辑连接: 打开同一弹窗的编辑态 (预填表单; 密码留空沿用旧凭据)
+  list.querySelectorAll('.conn-edit').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const conn = connections.find((c) => c.id === btn.dataset.editId);
+      if (conn) {
+        closeConnDrawer();
+        openModal(conn);
+      }
     });
   });
   list.querySelectorAll('.conn-del').forEach((btn) => {
@@ -2018,6 +2033,60 @@ function clearSftpDropActive() {
   sftpDragDepth = 0;
   const panel = $('#sftpPanel');
   if (panel) panel.classList.remove('sftp-drop-active');
+}
+
+// ============ 原生拖拽上传 (Tauri v2 drag-drop 事件带真实磁盘路径) ============
+// 背景: Windows 上窗口默认 dragDropEnabled=true, Tauri 接管 OS 拖放, HTML5 DOM 的
+// drop 事件拿不到 File。因此改为订阅 Tauri 的 drag-drop 事件 (含 paths),
+// 登记路径后复用现有 sftpUpload 链路。DOM 版处理器保留作为非 Tauri 环境兜底。
+function initNativeDragDrop() {
+  if (!window.nimbus || typeof window.nimbus.onDragDrop !== 'function') return;
+  window.nimbus.onDragDrop((ev) => {
+    const panel = $('#sftpPanel');
+    if (ev.type === 'enter' || ev.type === 'over') {
+      if (currentSftpSession() && panel) panel.classList.add('sftp-drop-active');
+      return;
+    }
+    if (ev.type === 'leave') {
+      clearSftpDropActive();
+      return;
+    }
+    if (ev.type !== 'drop') return;
+    clearSftpDropActive();
+    const session = currentSftpSession();
+    if (!session) {
+      toast(T('请先连接会话再拖拽上传'), 'info');
+      return;
+    }
+    const paths = (ev.paths || []).filter((p) => typeof p === 'string' && p.length > 0);
+    if (paths.length === 0) return;
+    uploadDroppedPaths(session, paths);
+  });
+}
+
+// 拖拽落下的本地路径: 主进程登记 (存在性/普通文件/数量校验) -> 复用串行上传链路
+async function uploadDroppedPaths(session, paths) {
+  if (sftpDragUploading) {
+    toast(T('上一批上传仍在进行, 请稍候'), 'info');
+    return;
+  }
+  let reg;
+  try {
+    reg = await window.nimbus.sftpRegisterUploadPaths(paths);
+  } catch (err) {
+    toast(T('拖拽上传失败: ') + ((err && err.message) || T('未知错误')), 'error');
+    return;
+  }
+  if (!reg || reg.ok !== true) {
+    toast((reg && reg.error) || (T('拖拽上传失败: ') + T('未知错误')), 'error');
+    return;
+  }
+  const accepted = Array.isArray(reg.accepted) ? reg.accepted : [];
+  if (accepted.length === 0) {
+    toast(T('没有可上传的文件 (文件夹暂不支持)'), 'info');
+    return;
+  }
+  await uploadLocalPaths(session, accepted);
 }
 
 function onSftpDragEnter(e) {
@@ -3931,15 +4000,47 @@ function renderMonitorCards(res, grid) {
   }
 }
 
-// ============ 新建连接弹窗 ============
-function openModal() {
+// ============ 新建 / 编辑连接弹窗 ============
+// 同一弹窗两态: openModal() 新建; openModal(conn) 编辑 (预填表单, 密码留空表示不修改)。
+function openModal(conn) {
   closeConnDrawer();
+  const editing = !!(conn && conn.id);
+  editingConnId = editing ? conn.id : null;
+
+  const title = $('#modalTitle');
+  if (title) title.textContent = editing ? T('编辑连接') : T('新建 SSH 连接');
+  const connectBtn = $('#btnConnect');
+  if (connectBtn) connectBtn.textContent = editing ? T('保存') : T('连接');
+
+  // 预填表单 (新建 = 清空 + 默认值)
+  $('#fName').value = editing ? (conn.name || '') : '';
+  $('#fHost').value = editing ? (conn.host || '') : '';
+  $('#fPort').value = editing ? (conn.port || 22) : 22;
+  $('#fUser').value = editing ? (conn.username || '') : '';
+  $('#fPassword').value = '';
+  $('#fKeyPath').value = editing ? (conn.privateKeyPath || '') : '';
+  $('#fPassphrase').value = '';
+  $('#fHostKeyVerify').checked = editing ? (conn.hostKeyVerify !== false) : true;
+  switchAuthPanel(editing ? (conn.authMethod || 'password') : 'password');
+
+  // 编辑态: 磁盘已有凭据时留空即沿用 (store_save 的「留空沿用」语义)
+  const pwd = $('#fPassword');
+  if (pwd) pwd.placeholder = (editing && conn.hasPassword) ? T('留空则不修改') : T('输入密码');
+  const pp = $('#fPassphrase');
+  if (pp) pp.placeholder = (editing && conn.hasPassphrase) ? T('留空则不修改') : T('如私钥有加密请填写');
+
   $('#modalOverlay').style.display = 'flex';
   $('#fHost').focus();
 }
 
 function closeModal() {
   $('#modalOverlay').style.display = 'none';
+  // 复位为「新建」态, 避免下次打开残留编辑态
+  editingConnId = null;
+  const title = $('#modalTitle');
+  if (title) title.textContent = T('新建 SSH 连接');
+  const connectBtn = $('#btnConnect');
+  if (connectBtn) connectBtn.textContent = T('连接');
 }
 
 function getCurrentAuthMethod() {
@@ -3960,13 +4061,21 @@ function handleConnect() {
   const username = $('#fUser').value.trim();
   const method = getCurrentAuthMethod();
 
+  const editingId = editingConnId;
+  const existing = editingId ? connections.find((c) => c.id === editingId) : null;
+  // 编辑态: 磁盘已有凭据时允许留空 (沿用旧密文, 后端 store_save 负责 merge)
+  const keepPassword = !!(existing && existing.hasPassword);
+  const keepPassphrase = !!(existing && existing.hasPassphrase);
+
   if (!host) { toast(T('请输入主机地址'), 'error'); $('#fHost').focus(); return; }
   if (!username) { toast(T('请输入用户名'), 'error'); $('#fUser').focus(); return; }
-  if (method === 'password' && !$('#fPassword').value) { toast(T('请输入密码'), 'error'); $('#fPassword').focus(); return; }
+  if (method === 'password' && !$('#fPassword').value && !keepPassword) {
+    toast(T('请输入密码'), 'error'); $('#fPassword').focus(); return;
+  }
   if (method === 'privateKey' && !$('#fKeyPath').value) { toast(T('请选择私钥文件'), 'error'); return; }
 
   const conn = {
-    id: 'c_' + Date.now().toString(36),
+    id: editingId || ('c_' + Date.now().toString(36)),
     name: name || `${username}@${host}:${port}`,
     host,
     port,
@@ -3979,17 +4088,28 @@ function handleConnect() {
     hostKeyVerify: $('#fHostKeyVerify').checked,
   };
 
-  // 保存连接
-  connections.push(conn);
+  if (existing) {
+    // 编辑: 保留旧记录里的非表单字段 (tunnels / autoReconnect 等), 不因编辑丢配置
+    for (const key of Object.keys(existing)) {
+      if (key === 'hasPassword' || key === 'hasPassphrase') continue;
+      if (!(key in conn)) conn[key] = existing[key];
+    }
+    const idx = connections.findIndex((c) => c.id === editingId);
+    if (idx >= 0) connections[idx] = conn; else connections.push(conn);
+  } else {
+    connections.push(conn);
+  }
+
   persistConnections();
   renderConnectionList();
-
-  // 清空表单
-  $('#fName').value = ''; $('#fHost').value = ''; $('#fUser').value = '';
-  $('#fPassword').value = ''; $('#fKeyPath').value = ''; $('#fPassphrase').value = '';
-  switchAuthPanel('password');
-
   closeModal();
+
+  if (existing) {
+    // 编辑保存不自动连接; 若该连接已有活动会话, 提示重连后生效
+    if (sessions.has(conn.id)) toast(T('配置已保存，重连后生效'), 'info');
+    else toast(T('连接已保存'), 'success');
+    return;
+  }
   openSession(conn);
 }
 
@@ -4172,6 +4292,8 @@ async function init() {
 
   // Roadmap ③: SFTP 拖拽上传 (面板区域拖放本地文件 -> 上传到当前目录)
   initSftpDragDrop();
+  // 原生拖拽上传 (Tauri v2 drag-drop 事件带真实路径; DOM 版处理器作为兜底保留)
+  initNativeDragDrop();
 
   // 认证方式切换
   $$('.auth-tab').forEach((tab) => {

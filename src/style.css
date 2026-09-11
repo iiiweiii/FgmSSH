@@ -461,6 +461,7 @@ body.is-resizing * { cursor: col-resize !important; }
 .conn-detail { font-size: 11px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
 
 .conn-pin,
+.conn-edit,
 .conn-del {
   width: 24px; height: 24px;
   border: none; background: transparent;
@@ -472,8 +473,10 @@ body.is-resizing * { cursor: col-resize !important; }
 .conn-pin { margin-left: 2px; }
 .conn-pin.is-pinned { display: flex; color: var(--accent); }
 .conn-item:hover .conn-del,
+.conn-item:hover .conn-edit,
 .conn-item:hover .conn-pin { display: flex; }
 .conn-pin:hover { color: var(--accent); background: var(--accent-soft); }
+.conn-edit:hover { color: var(--accent); background: var(--accent-soft); }
 .conn-del:hover { color: var(--red); background: rgba(255, 93, 93, 0.12); }
 
 /* ============ 新建连接按钮 ============ */

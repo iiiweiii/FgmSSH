@@ -1,7 +1,7 @@
 {
   "name": "fmgssh-tauri",
   "productName": "FgmSSH",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "description": "FgmSSH - 现代化界面的 Windows SSH 客户端 (Tauri v2)",
   "private": true,
   "type": "module",

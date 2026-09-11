@@ -149,6 +149,10 @@
     '从加密备份文件导入连接配置 (将覆盖现有连接)': 'Import connections from an encrypted backup (overwrites current ones)',
     '新建连接': 'New connection',
     '新建 SSH 连接': 'New SSH connection',
+    '编辑连接': 'Edit connection',
+    '留空则不修改': 'Leave blank to keep unchanged',
+    '连接已保存': 'Connection saved',
+    '配置已保存，重连后生效': 'Saved; reconnect to apply',
 
     // ===== 标签栏 / 面板入口 =====
     '全屏终端': 'Fullscreen terminal',

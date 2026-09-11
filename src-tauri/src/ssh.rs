@@ -357,10 +357,42 @@ fn load_key_pair(
     russh::keys::load_secret_key(path, passphrase).map_err(|_| "无法读取私钥".to_string())
 }
 
+// ================= SSH Agent 连接 (Windows 命名管道 / Unix socket) =================
+
+/// Agent 通信流: Windows 用 OpenSSH agent 命名管道, 其它平台用 Unix domain socket。
+#[cfg(windows)]
+type AgentStream = tokio::net::windows::named_pipe::NamedPipeClient;
+#[cfg(not(windows))]
+type AgentStream = tokio::net::UnixStream;
+
+/// 连接本机 SSH Agent。
+/// - Windows: OpenSSH 官方 agent 的命名管道 `\\.\pipe\openssh-ssh-agent`
+///   (需「OpenSSH Authentication Agent」服务已启动)
+/// - 其它平台: 走 $SSH_AUTH_SOCK (russh-keys connect_env)
+async fn connect_agent() -> Result<russh_keys::agent::client::AgentClient<AgentStream>, String> {
+    #[cfg(windows)]
+    {
+        use tokio::net::windows::named_pipe::ClientOptions;
+        let pipe = ClientOptions::new()
+            .open(r"\\.\pipe\openssh-ssh-agent")
+            .map_err(|_| {
+                "无法连接 SSH Agent: 请确认 Windows「OpenSSH Authentication Agent」服务已启动"
+                    .to_string()
+            })?;
+        Ok(russh_keys::agent::client::AgentClient::connect(pipe))
+    }
+    #[cfg(not(windows))]
+    {
+        russh_keys::agent::client::AgentClient::connect_env()
+            .await
+            .map_err(|e| format!("无法连接 SSH Agent (SSH_AUTH_SOCK): {e}"))
+    }
+}
+
 // ================= 建立会话 (连接 + 认证 + 终端) =================
 
 /// 完整建立一次 SSH 会话 (初始连接与重连共用)。
-/// 认证方式: password / privateKey (含 passphrase) / agent (暂不支持)。
+/// 认证方式: password / privateKey (含 passphrase) / agent (本机 SSH Agent)。
 /// 返回 (终端通道, russh 会话句柄) —— 会话句柄供 sftp/tunnel/monitor 开新通道。
 async fn establish_session(
     state: &AppState,
@@ -424,9 +456,38 @@ async fn establish_session(
                 .map_err(|_| "密钥认证失败，请检查私钥文件或口令")?;
         }
         "agent" => {
-            // russh 可通过 russh-keys 的 agent 客户端支持 SSH Agent,
-            // 但当前依赖集未引入 (SPEC 5), fail-safe 返回不支持。
-            return Err("暂不支持 SSH Agent 认证方式".to_string());
+            // SSH Agent 认证: 私钥始终留在 agent 内, 由 agent 完成签名。
+            // 取 agent 全部公钥逐个尝试 publickey 认证 (russh::auth::Signer 已为
+            // russh_keys::agent::client::AgentClient 实现)。
+            let mut agent = connect_agent().await?;
+            let identities = agent
+                .request_identities()
+                .await
+                .map_err(|e| format!("无法读取 SSH Agent 密钥列表: {e}"))?;
+            if identities.is_empty() {
+                return Err("SSH Agent 中没有可用密钥 (请先执行 ssh-add 添加私钥)".to_string());
+            }
+            let mut authed = false;
+            let mut last_err: Option<String> = None;
+            for key in identities {
+                let (back, res) = handle
+                    .authenticate_future(&config.username, key, agent)
+                    .await;
+                agent = back;
+                match res {
+                    Ok(true) => {
+                        authed = true;
+                        break;
+                    }
+                    Ok(false) => continue, // 该密钥被服务器拒绝, 试下一个
+                    Err(e) => last_err = Some(format!("SSH Agent 认证出错: {e}")),
+                }
+            }
+            if !authed {
+                return Err(last_err.unwrap_or_else(|| {
+                    "SSH Agent 认证失败: 服务器拒绝了 agent 中的全部密钥".to_string()
+                }));
+            }
         }
         other => {
             return Err(format!("不支持的认证方式：{}", other));

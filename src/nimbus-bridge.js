@@ -16,6 +16,9 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+// 原生拖拽文件: Tauri v2 的 webview drag-drop 事件携带真实磁盘路径
+// (Windows 下窗口默认 dragDropEnabled=true, HTML5 DOM drop 拿不到 File)
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 // pdfjs worker 源文件经 vite「?url」资产导入: 打包后作为独立静态资源输出并提供运行时 URL,
 // 供 renderer.js 的 renderDocPdf 取来转 Blob URL 使用 (dev/build 均可解析, 不依赖 node_modules 相对路径)。
 // 注: pdfjs-dist@4 无 exports 字段, 裸子路径 `pdfjs-dist/build/pdf.worker.min.mjs` 可直接解析。
@@ -240,6 +243,27 @@ const nimbus = {
   onUpdateProgress: makeOn('updateProgress'),
   onHostKeyConfirm: makeOn('hostKeyConfirm'),
   onHostKeyMismatch: makeOn('hostKeyMismatch'),
+
+  /**
+   * 原生拖拽文件事件 (Tauri v2 webview): 携带真实磁盘路径。
+   * 回调参数: { type: 'enter'|'over'|'drop'|'leave', paths: string[] }
+   * 返回取消订阅函数。
+   */
+  onDragDrop: (cb) => {
+    if (typeof cb !== 'function' || !isTauriRuntime()) return () => {};
+    let unlisten = null;
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const p = (event && event.payload) ? event.payload : {};
+        safeCall(cb, {
+          type: p.type,
+          paths: Array.isArray(p.paths) ? p.paths : [],
+        });
+      })
+      .then((un) => { unlisten = un; })
+      .catch((err) => { console.warn('[nimbus-bridge] 拖拽事件订阅失败:', err); });
+    return () => { if (typeof unlisten === 'function') unlisten(); };
+  },
 };
 
 // 幂等: 只挂载一次
