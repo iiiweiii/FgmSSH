@@ -1069,11 +1069,15 @@ body.is-resizing * { cursor: col-resize !important; }
 }
 
 /* ============ Toast ============ */
+/* 顶部居中弹出 (原为右上角): 仅为展示, pointer-events:none 避免遮挡标签栏点击 */
 .toast-container {
   position: fixed;
-  top: 18px; right: 18px;
-  display: flex; flex-direction: column; gap: 8px;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
   z-index: 200;
+  pointer-events: none;
 }
 .toast {
   display: flex; align-items: center; gap: 9px;
@@ -1092,8 +1096,9 @@ body.is-resizing * { cursor: col-resize !important; }
 .toast.error { border-left-color: var(--red); }
 .toast.success { border-left-color: var(--green); }
 .toast.info { border-left-color: var(--accent); }
-@keyframes toastIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
-.toast.out { opacity: 0; transform: translateX(24px); transition: all 0.3s; }
+/* 顶部居中: 自上方下滑淡入 / 淡出 (原右侧滑入) */
+@keyframes toastIn { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+.toast.out { opacity: 0; transform: translateY(-12px); transition: all 0.3s; }
 
 /* 全屏终端 */
 body.terminal-fullscreen .sidebar { display: none; }
