@@ -3174,14 +3174,12 @@ function initPreviewEvents() {
 let settingsUpdateState = null; // 最近一次检查结果 { ok, hasUpdate, current, latest, url, assets }
 let settingsUpdating = false;   // 下载/安装进行中 (防重入)
 
-// 挑选用于应用内更新的附件: 便携版 exe 最优 (直接自替换), 其次 NSIS 安装包
+// 挑选用于应用内更新的附件: 仅接受便携版 exe (可安全自替换)。
+// 不接受 NSIS 安装包 —— 把安装包覆盖到程序本体上是错误行为, 此时提示用户走「打开下载页」。
 function pickUpdateAsset(res) {
   const list = (res && Array.isArray(res.assets)) ? res.assets : [];
   const exes = list.filter((a) => a && typeof a.url === 'string' && /\.exe$/i.test(a.name || ''));
-  if (exes.length === 0) return null;
-  return exes.find((a) => /portable/i.test(a.name))
-    || exes.find((a) => /setup/i.test(a.name))
-    || exes[0];
+  return exes.find((a) => /portable/i.test(a.name)) || null;
 }
 
 // 更新进度条 (show=false 时隐藏)

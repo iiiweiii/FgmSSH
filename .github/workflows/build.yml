@@ -74,6 +74,7 @@ jobs:
           projectPath: .
 
       # 额外上传便携版 exe: 应用内「下载并安装更新」以此为目标 (自替换 + 自动重启)
+      # 注意: 先复制成正式资产名再上传 (gh 的 file#name 语法在 PowerShell 下不可靠)
       - name: Upload portable exe to release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -83,4 +84,7 @@ jobs:
           $ver = "${{ github.ref_name }}".TrimStart('v')
           $exe = "src-tauri/target/release/fmgssh.exe"
           if (-not (Test-Path $exe)) { throw "portable exe not found: $exe" }
-          gh release upload "v$ver" "$exe#FgmSSH_${ver}_x64-portable.exe" --clobber --repo "${{ github.repository }}"
+          $named = "FgmSSH_${ver}_x64-portable.exe"
+          Copy-Item $exe $named -Force
+          gh release upload "v$ver" $named --clobber --repo "${{ github.repository }}"
+          Remove-Item $named -Force
