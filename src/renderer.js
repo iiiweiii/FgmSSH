@@ -60,31 +60,10 @@ function applyLanguageChange() {
   try { renderFavList(); } catch (e) {}
   const s = currentSftpSession();
   try { if (s && s.fileEntries) renderFileList(s, s.fileEntries); } catch (e) {}
-  try { refreshSessionStatusLabels(); } catch (e) {}
   try { if ($('#auditOverlay').style.display === 'flex') refreshAuditLog(); } catch (e) {}
   try { if ($('#tunnelOverlay').style.display === 'flex') refreshTunnelList(); } catch (e) {}
   try { if ($('#monitorOverlay').style.display === 'flex') refreshMonitor(true); } catch (e) {}
   try { updateSettingsPanel(); } catch (e) {}
-}
-
-// 会话状态栏文案按当前语言重算 (其余动态视图由各自渲染函数重绘)
-function refreshSessionStatusLabels() {
-  const session = activeSessionId ? sessions.get(activeSessionId) : null;
-  if (!session) return;
-  const map = {
-    connected: '已连接',
-    connecting: '连接中...',
-    reconnecting: '重连中...',
-    error: '连接失败',
-    closed: '已断开',
-  };
-  const dotClass = session.status === 'connected' ? 'ok'
-    : (session.status === 'connecting' || session.status === 'reconnecting') ? 'connecting'
-      : 'error';
-  const dot = $('#statusDot');
-  if (dot) dot.className = 'status-dot ' + dotClass;
-  const text = $('#statusText');
-  if (text) text.textContent = T(map[session.status] || '已断开');
 }
 
 // ============ 工具函数 ============
@@ -758,7 +737,6 @@ async function openSession(connConfig) {
   $('#terminalArea').appendChild(hostEl);
   $('#terminalArea').style.display = 'flex';
   $('#emptyState').style.display = 'none';
-  $('#statusbar').style.display = 'flex';
 
   // 创建终端
   const term = createTerminal();
@@ -805,7 +783,6 @@ async function openSession(connConfig) {
 
   addTab(session);
   activateSession(sessionId);
-  updateStatus('connecting', T('正在连接 {0}:{1} ...', connConfig.host, connConfig.port));
 
   // 终端输入 -> 主进程 (原样透传; R3 旁路监听 cd 同步, 不影响回显/交互)
   term.onData((data) => {
@@ -899,18 +876,6 @@ function activateSession(sessionId) {
 
   // 侧边栏 SFTP 面板跟随活动会话 (已连接则加载其目录, 否则占位)
   showSftpFor(sessionId);
-
-  // 状态栏
-  const conn = session.config;
-  $('#statusSession').textContent = `${conn.username}@${conn.host}:${conn.port}`;
-  const dot = $('#statusDot');
-  const isConnecting = session.status === 'connecting' || session.status === 'reconnecting';
-  dot.className = 'status-dot ' + (session.status === 'connected' ? 'ok' : isConnecting ? 'connecting' : 'error');
-  $('#statusText').textContent =
-    session.status === 'connected' ? T('已连接') :
-    session.status === 'connecting' ? T('连接中...') :
-    session.status === 'reconnecting' ? T('重连中...') :
-    session.status === 'error' ? T('连接失败') : T('已断开');
 }
 
 async function closeSession(sessionId) {
@@ -955,7 +920,6 @@ async function closeSession(sessionId) {
     } else {
       $('#terminalArea').style.display = 'none';
       $('#emptyState').style.display = 'flex';
-      $('#statusbar').style.display = 'none';
       // SFTP 面板回到占位
       showSftpFor(null);
     }
@@ -975,7 +939,6 @@ function setSessionError(session, message) {
   `;
   session.tabEl.classList.remove('connecting');
   session.tabEl.classList.add('error');
-  updateStatus('error', T('连接失败'));
   // 焦点守卫 (与 ready 分支一致): 文档查看器可见时, 后台会话报错不抢焦点, 仅标签标记为 error;
   // 若当前无文档查看器显示, 则正常切换展示错误
   if (!shouldSkipSessionFocus()) {
@@ -990,12 +953,6 @@ function setSessionError(session, message) {
 function shouldSkipSessionFocus() {
   const docViewerVisible = activeDocId && $('#docViewer').style.display !== 'none';
   return docViewerVisible;
-}
-
-function updateStatus(state, text) {
-  const dot = $('#statusDot');
-  dot.className = 'status-dot ' + state;
-  $('#statusText').textContent = text;
 }
 
 // ============ 断线自动重连 UI (Roadmap 第一梯队 ①) ============
@@ -1022,7 +979,6 @@ function showReconnectOverlay(session, attempt, maxAttempts) {
   session.hostEl.appendChild(session.overlay);
   session.tabEl.classList.remove('connected');
   session.tabEl.classList.add('connecting');
-  updateStatus('connecting', T('重连中 ({0}/{1})', n, m));
   // SFTP 面板回到占位 (会话未就绪, 避免对已断开会话发起目录请求)
   if (activeSessionId === session.sessionId) showSftpFor(session.sessionId);
 }
@@ -1042,7 +998,6 @@ function showReconnectFailed(session, error) {
   session.hostEl.appendChild(session.overlay);
   session.tabEl.classList.remove('connecting');
   session.tabEl.classList.add('error');
-  updateStatus('error', T('重连失败'));
   toast(error ? (T('重连失败：') + error) : T('重连失败'), 'error');
 }
 
@@ -1142,7 +1097,6 @@ function wireIPC() {
       session.overlay.remove();
       session.tabEl.classList.remove('connecting');
       session.tabEl.classList.add('connected');
-      updateStatus('ok', T('已连接'));
       // 连接/重连成功: 强制上报当前终端尺寸 (初始连接与断线重连重建的远端 PTY 均为 80x24,
       // 尺寸失配会导致长命令行编辑时光标/内容错乱, 见 reportTerminalSize 注释)
       reportTerminalSize(session, true);
@@ -1183,7 +1137,6 @@ function wireIPC() {
         session.overlay.innerHTML = `<div class="overlay-error">${T('连接已关闭')}</div>`;
         session.hostEl.appendChild(session.overlay);
         session.tabEl.classList.remove('connected');
-        updateStatus('error', T('已断开'));
         // SFTP 面板同步: 若当前展示的正是该会话, 回到占位
         if (activeSessionId === sessionId) showSftpFor(sessionId);
       }
@@ -2299,7 +2252,6 @@ function activateDocTab(docId) {
   $$('.terminal-host').forEach((h) => (h.style.display = 'none'));
   $('#docViewer').style.display = 'flex';
   $('#emptyState').style.display = 'none';
-  $('#statusbar').style.display = 'flex';
 
   // 标题栏: 文件名 + 保存按钮仅文本类显示 (编辑模式且非分段预览时才允许保存)
   $('#docTitleName').textContent = doc.name;
@@ -2350,7 +2302,6 @@ async function closeDocTab(docId) {
     } else {
       $('#terminalArea').style.display = 'none';
       $('#emptyState').style.display = 'flex';
-      $('#statusbar').style.display = 'none';
       showSftpFor(null);
     }
   }

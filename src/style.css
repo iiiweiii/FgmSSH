@@ -655,24 +655,6 @@ body.is-resizing * { cursor: col-resize !important; }
 .overlay-reconnect { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .overlay-reconnect-text { color: var(--yellow); font-size: 13px; }
 
-/* 状态栏 */
-.statusbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 16px;
-  background: var(--bg-sidebar);
-  border-top: 1px solid var(--border-soft);
-  font-size: 11.5px;
-  color: var(--text-dim);
-  min-height: 30px;
-}
-.status-left { display: flex; align-items: center; gap: 8px; }
-.status-right { display: flex; align-items: center; gap: 8px; }
-.status-sep { color: var(--text-faint); }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
-.status-dot.ok { background: var(--green); box-shadow: 0 0 6px rgba(62, 207, 142, 0.5); }
-.status-dot.connecting { background: var(--yellow); animation: pulse 1s infinite; }
-.status-dot.error { background: var(--red); }
-
 /* ============ 弹窗 ============ */
 .modal-overlay {
   position: fixed; inset: 0;
@@ -1081,7 +1063,6 @@ body.is-resizing * { cursor: col-resize !important; }
 
 /* 全屏终端 */
 body.terminal-fullscreen .sidebar { display: none; }
-body.terminal-fullscreen .statusbar { display: none; }
 body.terminal-fullscreen .tabbar { min-height: 40px; }
 body.terminal-fullscreen .terminal-area { padding: 0; }
 /* 全屏模式同样移除顶部 padding, 保持终端首行紧贴 tabbar 下沿 */

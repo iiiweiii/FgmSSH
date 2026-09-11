@@ -35,7 +35,7 @@
     'terminalArea', 'connDrawerList', 'sftpBody', 'sftpSearchResultsList', 'sftpProgress',
     'favList', 'docViewerBody', 'docTitleName', 'auditBody', 'auditCount', 'auditTbody',
     'tunnelList', 'monitorGrid', 'monitorLoading', 'monitorError', 'monitorFetched',
-    'tunnelSessionHint', 'statusText', 'statusSession', 'previewTitle', 'previewZoomLabel',
+    'tunnelSessionHint', 'previewTitle', 'previewZoomLabel',
     'hostKeyHost', 'hostKeyAlgo', 'hostKeySha', 'hostKeyMd5', 'hostKeyStoredAlgo',
     'hostKeyStoredSha', 'hostKeyHint', 'toastContainer',
   ];
