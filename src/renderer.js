@@ -4100,6 +4100,11 @@ function handleConnect() {
     connections.push(conn);
   }
 
+  // 凭据标记: 与 store_load 脱敏视图保持一致 (留空沿用旧值时仍视为已有凭据),
+  // 否则下次打开编辑会被误判为"无密码"而强制重新输入。
+  conn.hasPassword = !!conn.password || keepPassword;
+  conn.hasPassphrase = !!conn.passphrase || keepPassphrase;
+
   persistConnections();
   renderConnectionList();
   closeModal();
