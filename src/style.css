@@ -1900,6 +1900,72 @@ body.terminal-fullscreen .terminal-host { padding: 0 8px; }
 .fav-add #favCmdInput { flex: 1; font-family: var(--font-mono); }
 .fav-add-btn { padding: 8px 16px; font-size: 12px; flex-shrink: 0; }
 
+/* ============ 设置面板 (右上浮层; 版本 / 更新检查 / 语言) ============ */
+.settings-panel {
+  position: fixed;
+  top: 50px;
+  right: 12px;
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  z-index: 90;
+  animation: slideUp 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  overflow: hidden;
+}
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+.settings-title { font-size: 13px; font-weight: 700; }
+.settings-close { width: 26px; height: 26px; }
+.settings-body { padding: 4px 14px 12px; display: flex; flex-direction: column; }
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-label { font-size: 12.5px; color: var(--text-dim); flex-shrink: 0; }
+.settings-value { font-family: var(--font-mono); font-size: 12.5px; color: var(--text); }
+.settings-controls { display: flex; align-items: center; gap: 6px; }
+.settings-btn { padding: 6px 12px; font-size: 12px; }
+.settings-btn:disabled { opacity: 0.5; cursor: default; }
+.settings-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  padding: 6px 8px;
+  outline: none;
+  cursor: pointer;
+}
+.settings-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.settings-select option { background: var(--bg-elevated); color: var(--text); }
+.settings-hint {
+  min-height: 16px;
+  padding: 2px 0 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ============ 配置导出/导入密码弹窗 (Roadmap ⑤) ============ */
 .config-pwd-modal { width: 420px; }
 .config-pwd-hint {

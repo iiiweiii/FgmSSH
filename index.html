@@ -171,6 +171,9 @@
             <span class="theme-state-icon">◐</span>
             <span class="theme-state-label">主题</span>
           </button>
+          <button class="icon-btn" id="btnSettings" title="设置">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
           <!-- Roadmap 第一梯队 ③ (S): 更新检查提示 (默认隐藏; 主进程发现新版本后显示, 点击打开 releases 页) -->
           <button class="update-badge" id="updateBadge" style="display:none;" title="点击打开 Releases 页面"></button>
           <button class="icon-btn" id="btnFullscreen" title="全屏终端">
@@ -214,6 +217,40 @@
           <input id="favNameInput" type="text" placeholder="名称 (可选)" spellcheck="false" maxlength="60" />
           <input id="favCmdInput" type="text" placeholder="命令，例如 tail -f {{logPath}}" spellcheck="false" maxlength="2000" />
           <button class="btn-primary fav-add-btn" id="favAddBtn">添加</button>
+        </div>
+      </div>
+
+      <!-- ============ 设置面板 (齿轮按钮打开; 版本 / 更新检查 / 语言) ============
+           与「命令收藏」同款右上浮层; 版本号由构建期注入 (vite define), 更新检查走后端 update_check -->
+      <div class="settings-panel" id="settingsPanel" style="display:none;">
+        <div class="settings-header">
+          <span class="settings-title">设置</span>
+          <button class="icon-btn settings-close" id="settingsClose" title="关闭">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="settings-body">
+          <div class="settings-row">
+            <div class="settings-label">当前版本</div>
+            <div class="settings-value" id="settingsVersion">-</div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">更新检查</div>
+            <div class="settings-controls">
+              <button class="btn-ghost settings-btn" id="settingsCheckUpdateBtn">检查更新</button>
+              <button class="btn-ghost settings-btn" id="settingsUpdateLink" style="display:none;">打开下载页</button>
+            </div>
+          </div>
+          <div class="settings-hint" id="settingsUpdateStatus"></div>
+          <div class="settings-row">
+            <div class="settings-label">语言</div>
+            <div class="settings-controls">
+              <select class="settings-select" id="settingsLangSelect">
+                <option value="zh">简体中文</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -624,6 +661,7 @@
        CSP 说明: 生产构建保持严格 CSP (script-src 'self' blob:, 无 unsafe-eval);
        vite dev 下若 CSP 阻断 HMR/源码映射, 见 README-BUILD.md「开发模式」一节。 -->
   <script src="/fav-commands.js"></script>
+  <script src="/i18n.js"></script>
   <script src="/gpu-chart.js"></script>
   <script src="/theme.js"></script>
   <script src="/file-filter.js"></script>

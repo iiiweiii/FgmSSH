@@ -37,6 +37,56 @@ const DOC_EXTENSIONS = [
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
+// ============ 国际化 (i18n) ============
+// 词典与翻译逻辑在 src/i18n.js (UMD -> window.I18n); T() 是全局翻译入口。
+// 说明: 源码中的界面中文字面量已统一包为 T('中文'[, 参数...]):
+//   - 中文模式 T() 原样返回中文; 英文模式查词典返回英文 (未收录则回落中文);
+//   - 插值文案形如 T('已连接到 {0}', host);
+//   - 静态界面 (index.html) 由 i18n.applyDom() 在启动与切换语言时翻译。
+const i18n = (typeof window !== 'undefined' && window.I18n)
+  ? window.I18n.createI18n({
+      storage: window.localStorage,
+      doc: document,
+      // 语言切换后: 静态界面已由 setLang 内部 applyDom 处理, 这里重渲染动态视图
+      onChange: () => { applyLanguageChange(); },
+    })
+  : null;
+
+function T(text, ...args) { return i18n ? i18n.t(text, ...args) : String(text); }
+
+// 语言切换后重渲染动态内容 (列表/面板/状态栏), 使其按新语言重新取值
+function applyLanguageChange() {
+  try { renderConnectionList(); } catch (e) {}
+  try { renderFavList(); } catch (e) {}
+  const s = currentSftpSession();
+  try { if (s && s.fileEntries) renderFileList(s, s.fileEntries); } catch (e) {}
+  try { refreshSessionStatusLabels(); } catch (e) {}
+  try { if ($('#auditOverlay').style.display === 'flex') refreshAuditLog(); } catch (e) {}
+  try { if ($('#tunnelOverlay').style.display === 'flex') refreshTunnelList(); } catch (e) {}
+  try { if ($('#monitorOverlay').style.display === 'flex') refreshMonitor(true); } catch (e) {}
+  try { updateSettingsPanel(); } catch (e) {}
+}
+
+// 会话状态栏文案按当前语言重算 (其余动态视图由各自渲染函数重绘)
+function refreshSessionStatusLabels() {
+  const session = activeSessionId ? sessions.get(activeSessionId) : null;
+  if (!session) return;
+  const map = {
+    connected: '已连接',
+    connecting: '连接中...',
+    reconnecting: '重连中...',
+    error: '连接失败',
+    closed: '已断开',
+  };
+  const dotClass = session.status === 'connected' ? 'ok'
+    : (session.status === 'connecting' || session.status === 'reconnecting') ? 'connecting'
+      : 'error';
+  const dot = $('#statusDot');
+  if (dot) dot.className = 'status-dot ' + dotClass;
+  const text = $('#statusText');
+  if (text) text.textContent = T(map[session.status] || '已断开');
+}
+
 // ============ 工具函数 ============
 function genId() { return 's' + (++sessionCounter) + '_' + Date.now().toString(36); }
 
@@ -72,10 +122,10 @@ function toggleConnectionPin(id) {
   const ids = loadPinnedConnectionIds();
   if (ids.has(id)) {
     ids.delete(id);
-    toast('已取消置顶连接', 'info');
+    toast(T('已取消置顶连接'), 'info');
   } else {
     ids.add(id);
-    toast('已置顶连接', 'success');
+    toast(T('已置顶连接'), 'success');
   }
   savePinnedConnectionIds(ids);
   renderConnectionList();
@@ -106,12 +156,12 @@ async function persistConnections() {
   try {
     const res = await window.nimbus.storeSave(connections);
     if (res && res.ok === false) {
-      toast((res.error) || '连接保存失败', 'error');
+      toast((res.error) || T('连接保存失败'), 'error');
       return false;
     }
     return true;
   } catch (e) {
-    toast('连接保存失败', 'error');
+    toast(T('连接保存失败'), 'error');
     return false;
   }
 }
@@ -209,16 +259,16 @@ function sendFavCommand(ts) {
   if (!item) return;
   const s = activeSessionId ? sessions.get(activeSessionId) : null;
   if (!s || s.status !== 'connected') {
-    toast('请先连接会话', 'info');
+    toast(T('请先连接会话'), 'info');
     return;
   }
   const cmd = expandCommandTemplate(item.cmd);
   if (cmd === null) return;
   favCommands.send(cmd).then((res) => {
     if (res && res.ok === false && res.error === 'no_session') {
-      toast('请先连接会话', 'info');
+      toast(T('请先连接会话'), 'info');
     } else if (res && res.ok === false) {
-      toast('发送命令失败', 'error');
+      toast(T('发送命令失败'), 'error');
     }
   }).catch(() => {});
 }
@@ -229,12 +279,12 @@ function expandCommandTemplate(command) {
   const names = [...new Set([...String(command).matchAll(/\{\{([A-Za-z][A-Za-z0-9_]{0,31})\}\}/g)].map((m) => m[1]))];
   if (names.length === 0) return command;
   if (names.length > 10) {
-    toast('命令模板变量不能超过 10 个', 'error');
+    toast(T('命令模板变量不能超过 10 个'), 'error');
     return null;
   }
   let expanded = command;
   for (const name of names) {
-    const value = window.prompt('输入 ' + name + ' 的值', '');
+    const value = window.prompt(T('输入 ') + name + T(' 的值'), '');
     if (value === null) return null;
     expanded = expanded.split('{{' + name + '}}').join(value);
   }
@@ -247,19 +297,19 @@ function addFavCommand() {
   const name = $('#favNameInput').value.trim();
   const cmd = $('#favCmdInput').value;
   if (!cmd || !cmd.trim()) {
-    toast('命令不能为空', 'error');
+    toast(T('命令不能为空'), 'error');
     $('#favCmdInput').focus();
     return;
   }
   const res = favCommands.add(name, cmd);
   if (!res.ok) {
-    toast(res.error === 'empty_cmd' ? '命令不能为空' : '添加失败', 'error');
+    toast(res.error === 'empty_cmd' ? T('命令不能为空') : T('添加失败'), 'error');
     return;
   }
   $('#favNameInput').value = '';
   $('#favCmdInput').value = '';
   renderFavList();
-  toast('已收藏命令', 'success');
+  toast(T('已收藏命令'), 'success');
 }
 
 // 删除收藏
@@ -267,7 +317,7 @@ function deleteFavCommand(ts) {
   if (!favCommands) return;
   favCommands.remove(Number(ts));
   renderFavList();
-  toast('已删除收藏', 'info');
+  toast(T('已删除收藏'), 'info');
 }
 
 // ============ 配置加密导出/导入 (Roadmap ⑤) ============
@@ -278,10 +328,10 @@ let configPwdAction = null; // 'export' | 'import'
 
 function openConfigPwdModal(action) {
   configPwdAction = action;
-  $('#configPwdTitle').textContent = action === 'export' ? '导出配置 - 设置加密密码' : '导入配置 - 输入解密密码';
+  $('#configPwdTitle').textContent = action === 'export' ? T('导出配置 - 设置加密密码') : T('导入配置 - 输入解密密码');
   $('#configPwdHint').textContent = action === 'export'
-    ? '备份文件将使用 AES-256-GCM 加密，导入时需输入相同密码。请妥善保管该密码。'
-    : '请输入导出备份时设置的密码。密码错误将无法解密。';
+    ? T('备份文件将使用 AES-256-GCM 加密，导入时需输入相同密码。请妥善保管该密码。')
+    : T('请输入导出备份时设置的密码。密码错误将无法解密。');
   $('#configPwdInput').value = '';
   $('#configPwdModal').style.display = 'flex';
   $('#configPwdInput').focus();
@@ -298,7 +348,7 @@ async function confirmConfigPwd() {
   const password = $('#configPwdInput').value;
   if (!action) return;
   if (!password) {
-    toast('请输入密码', 'error');
+    toast(T('请输入密码'), 'error');
     $('#configPwdInput').focus();
     return;
   }
@@ -308,29 +358,29 @@ async function confirmConfigPwd() {
     try {
       res = await window.nimbus.configExport(password);
     } catch (err) {
-      toast('导出异常: ' + (err.message || '未知错误'), 'error');
+      toast(T('导出异常: ') + (err.message || T('未知错误')), 'error');
       return;
     }
     if (res && res.ok) {
-      toast(`配置已导出 (${res.count} 条连接)`, 'success');
+      toast(T('配置已导出 ({0} 条连接)', res.count), 'success');
     } else {
-      toast((res && res.error) || '导出失败', 'error');
+      toast((res && res.error) || T('导出失败'), 'error');
     }
   } else {
     // 导入: 全量替换确认提示
-    if (!confirm('导入将覆盖当前全部连接配置，确定继续吗？')) return;
+    if (!confirm(T('导入将覆盖当前全部连接配置，确定继续吗？'))) return;
     let res;
     try {
       res = await window.nimbus.configImport(password);
     } catch (err) {
-      toast('导入异常: ' + (err.message || '未知错误'), 'error');
+      toast(T('导入异常: ') + (err.message || T('未知错误')), 'error');
       return;
     }
     if (res && res.ok) {
-      toast(`配置已导入 (${res.count} 条连接)`, 'success');
+      toast(T('配置已导入 ({0} 条连接)', res.count), 'success');
       await loadConnections(); // 刷新渲染层连接列表
     } else {
-      toast((res && res.error) || '导入失败', 'error');
+      toast((res && res.error) || T('导入失败'), 'error');
     }
   }
 }
@@ -391,12 +441,12 @@ function renderConnectionList() {
     const isActive = sessions.has(c.id);
     const pinned = pinnedIds.has(c.id);
     const id = escapeHtml(String(c.id || ''));
-    const name = escapeHtml(String(c.name || '未命名连接'));
+    const name = escapeHtml(String(c.name || T('未命名连接')));
     const user = escapeHtml(String(c.username || ''));
     const host = escapeHtml(String(c.host || ''));
     const port = escapeHtml(String(c.port || 22));
     return `
-      <div class="conn-item ${isActive ? 'active' : ''} ${pinned ? 'pinned' : ''}" data-conn-id="${id}" title="连接 ${host}:${port}">
+      <div class="conn-item ${isActive ? 'active' : ''} ${pinned ? 'pinned' : ''}" data-conn-id="${id}" title="${T('连接 {0}:{1}', host, port)}">
         <div class="conn-icon">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 10h5M7 14h8"/>
@@ -409,7 +459,7 @@ function renderConnectionList() {
         <button class="conn-pin ${pinned ? 'is-pinned' : ''}" data-pin-id="${id}" aria-pressed="${pinned}" title="${pinned ? '取消置顶' : '置顶连接'}">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="${pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
         </button>
-        <button class="conn-del" data-del-id="${id}" title="删除连接">
+        <button class="conn-del" data-del-id="${id}" title="${T('删除连接')}">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
         </button>
       </div>`;
@@ -437,13 +487,13 @@ function renderConnectionList() {
       e.stopPropagation();
       const id = btn.dataset.delId;
       const conn = connections.find((c) => c.id === id);
-      if (conn && confirm(`确定删除连接 "${conn.name}" 吗？`)) {
+      if (conn && confirm(T('确定删除连接 "{0}" 吗？', conn.name))) {
         // 如已连接则先断开
         if (sessions.has(id)) closeSession(id);
         connections = connections.filter((c) => c.id !== id);
         persistConnections();
         renderConnectionList();
-        toast('连接已删除', 'info');
+        toast(T('连接已删除'), 'info');
       }
     });
   });
@@ -701,7 +751,7 @@ async function openSession(connConfig) {
   overlay.className = 'term-overlay';
   overlay.innerHTML = `
     <div class="overlay-spinner"></div>
-    <div class="overlay-text">正在连接 ${escapeHtml(connConfig.username)}@${escapeHtml(connConfig.host)}:${connConfig.port} ...</div>
+    <div class="overlay-text">${T('正在连接 {0}@{1}:{2} ...', escapeHtml(connConfig.username), escapeHtml(connConfig.host), connConfig.port)}</div>
   `;
   hostEl.appendChild(overlay);
 
@@ -755,7 +805,7 @@ async function openSession(connConfig) {
 
   addTab(session);
   activateSession(sessionId);
-  updateStatus('connecting', `正在连接 ${connConfig.host}:${connConfig.port} ...`);
+  updateStatus('connecting', T('正在连接 {0}:{1} ...', connConfig.host, connConfig.port));
 
   // 终端输入 -> 主进程 (原样透传; R3 旁路监听 cd 同步, 不影响回显/交互)
   term.onData((data) => {
@@ -799,10 +849,10 @@ async function openSession(connConfig) {
     });
     // 修复: 连接失败时后端返回 {ok:false, error}, 需显式检查并展示错误 (否则一直转圈)
     if (res && res.ok === false) {
-      setSessionError(session, res.error || '连接失败');
+      setSessionError(session, res.error || T('连接失败'));
     }
   } catch (e) {
-    setSessionError(session, '无法发起连接: ' + e.message);
+    setSessionError(session, T('无法发起连接: ') + e.message);
   }
 }
 
@@ -814,7 +864,7 @@ function addTab(session) {
   tab.innerHTML = `
     <span class="tab-dot"></span>
     <span class="tab-name">${escapeHtml(session.name)}</span>
-    <button class="tab-close" title="关闭">
+    <button class="tab-close" title="${T('关闭')}">
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>
   `;
@@ -857,10 +907,10 @@ function activateSession(sessionId) {
   const isConnecting = session.status === 'connecting' || session.status === 'reconnecting';
   dot.className = 'status-dot ' + (session.status === 'connected' ? 'ok' : isConnecting ? 'connecting' : 'error');
   $('#statusText').textContent =
-    session.status === 'connected' ? '已连接' :
-    session.status === 'connecting' ? '连接中...' :
-    session.status === 'reconnecting' ? '重连中...' :
-    session.status === 'error' ? '连接失败' : '已断开';
+    session.status === 'connected' ? T('已连接') :
+    session.status === 'connecting' ? T('连接中...') :
+    session.status === 'reconnecting' ? T('重连中...') :
+    session.status === 'error' ? T('连接失败') : T('已断开');
 }
 
 async function closeSession(sessionId) {
@@ -925,7 +975,7 @@ function setSessionError(session, message) {
   `;
   session.tabEl.classList.remove('connecting');
   session.tabEl.classList.add('error');
-  updateStatus('error', '连接失败');
+  updateStatus('error', T('连接失败'));
   // 焦点守卫 (与 ready 分支一致): 文档查看器可见时, 后台会话报错不抢焦点, 仅标签标记为 error;
   // 若当前无文档查看器显示, 则正常切换展示错误
   if (!shouldSkipSessionFocus()) {
@@ -966,13 +1016,13 @@ function showReconnectOverlay(session, attempt, maxAttempts) {
   session.overlay.innerHTML = `
     <div class="overlay-reconnect">
       <div class="overlay-spinner"></div>
-      <div class="overlay-reconnect-text">已断开 · 重连中 (${n}/${m})</div>
+      <div class="overlay-reconnect-text">${T('已断开 · 重连中 ({0}/{1})', n, m)}</div>
     </div>
   `;
   session.hostEl.appendChild(session.overlay);
   session.tabEl.classList.remove('connected');
   session.tabEl.classList.add('connecting');
-  updateStatus('connecting', `重连中 (${n}/${m})`);
+  updateStatus('connecting', T('重连中 ({0}/{1})', n, m));
   // SFTP 面板回到占位 (会话未就绪, 避免对已断开会话发起目录请求)
   if (activeSessionId === session.sessionId) showSftpFor(session.sessionId);
 }
@@ -992,8 +1042,8 @@ function showReconnectFailed(session, error) {
   session.hostEl.appendChild(session.overlay);
   session.tabEl.classList.remove('connecting');
   session.tabEl.classList.add('error');
-  updateStatus('error', '重连失败');
-  toast(error ? ('重连失败：' + error) : '重连失败', 'error');
+  updateStatus('error', T('重连失败'));
+  toast(error ? (T('重连失败：') + error) : T('重连失败'), 'error');
 }
 
 // ============ 主机密钥指纹校验弹窗 (TOFU, 防中间人) ============
@@ -1032,7 +1082,7 @@ function renderHostKeyDialog(p) {
   const mismatch = !!p.storedSha256 || p.mismatch === true;
   const modal = getHostKeyModal();
   modal.classList.toggle('mismatch', mismatch);
-  $('#hostKeyTitle').textContent = mismatch ? '⚠️ 主机密钥不匹配' : '首次连接 · 确认主机密钥';
+  $('#hostKeyTitle').textContent = mismatch ? T('⚠️ 主机密钥不匹配') : T('首次连接 · 确认主机密钥');
   $('#hostKeyWarning').style.display = mismatch ? 'flex' : 'none';
   $('#hostKeyHost').textContent = `${p.host}:${p.port}`;
   $('#hostKeyAlgo').textContent = p.algorithm || 'unknown';
@@ -1048,12 +1098,12 @@ function renderHostKeyDialog(p) {
   }
   const hint = $('#hostKeyHint');
   if (mismatch) {
-    hint.innerHTML = '如确认是服务器端密钥更换 (而非攻击), 可信任新指纹继续连接; 否则请选择「拒绝连接」。';
+    hint.innerHTML = T('如确认是服务器端密钥更换 (而非攻击), 可信任新指纹继续连接; 否则请选择「拒绝连接」。');
   } else {
-    hint.innerHTML = '首次连接到此主机。请通过可信渠道比对服务器指纹 (例如: <code>ssh-keyscan -t ed25519 ' +
-      escapeHtml(String(p.host || '')) + '</code>), 确认无误后再信任。';
+    hint.innerHTML = `${T('首次连接到此主机。请通过可信渠道比对服务器指纹 (例如:')} <code>ssh-keyscan -t ed25519 ` +
+      escapeHtml(String(p.host || '')) + `</code>${T('), 确认无误后再信任。')}`;
   }
-  $('#hostKeyAcceptBtn').textContent = mismatch ? '信任新指纹并继续' : '信任并连接';
+  $('#hostKeyAcceptBtn').textContent = mismatch ? T('信任新指纹并继续') : T('信任并连接');
 }
 
 // 关闭当前弹窗并解决 (accept=true -> hostkey:accept, 否则 hostkey:reject)
@@ -1092,7 +1142,7 @@ function wireIPC() {
       session.overlay.remove();
       session.tabEl.classList.remove('connecting');
       session.tabEl.classList.add('connected');
-      updateStatus('ok', '已连接');
+      updateStatus('ok', T('已连接'));
       // 连接/重连成功: 强制上报当前终端尺寸 (初始连接与断线重连重建的远端 PTY 均为 80x24,
       // 尺寸失配会导致长命令行编辑时光标/内容错乱, 见 reportTerminalSize 注释)
       reportTerminalSize(session, true);
@@ -1106,7 +1156,7 @@ function wireIPC() {
         window.nimbus.write(sessionId, session.buffer);
         session.buffer = '';
       }
-      toast(`已连接到 ${session.config.host}`, 'success');
+      toast(T('已连接到 {0}', session.config.host), 'success');
       // 连接成功: 主进程已自动建立该连接配置中的隧道, 面板打开时刷新一次
       if ($('#tunnelOverlay').style.display === 'flex') refreshTunnelList();
     } else if (type === 'error') {
@@ -1130,10 +1180,10 @@ function wireIPC() {
         session.status = 'closed';
         session.overlay = document.createElement('div');
         session.overlay.className = 'term-overlay';
-        session.overlay.innerHTML = `<div class="overlay-error">连接已关闭</div>`;
+        session.overlay.innerHTML = `<div class="overlay-error">${T('连接已关闭')}</div>`;
         session.hostEl.appendChild(session.overlay);
         session.tabEl.classList.remove('connected');
-        updateStatus('error', '已断开');
+        updateStatus('error', T('已断开'));
         // SFTP 面板同步: 若当前展示的正是该会话, 回到占位
         if (activeSessionId === sessionId) showSftpFor(sessionId);
       }
@@ -1196,7 +1246,7 @@ function handleTerminalInputLine(session, data) {
     if (!res || !res.ok || !res.path) return; // {ok:false} 静默忽略 (目录不存在/解析失败)
     // 带历史入栈 (等同手动进入), 复用 loadDir 已有的 fileReqSeq/currentSftpSessionId 竞态防护
     loadDir(session.sessionId, res.path);
-    toast(`已切换到 ${res.path}`, 'success');
+    toast(T('已切换到 {0}', res.path), 'success');
   }).catch(() => {}); // IPC 异常同样静默, 不影响终端输入
 }
 
@@ -1295,7 +1345,7 @@ async function loadDir(sessionId, path, opts = {}) {
 
   const pathStr = normalizeRemotePath(path);
   if (pathStr === null) {
-    toast('路径包含非法段 (..)', 'error');
+    toast(T('路径包含非法段 (..)'), 'error');
     return;
   }
 
@@ -1311,7 +1361,7 @@ async function loadDir(sessionId, path, opts = {}) {
   setFileLoading(session, false);
 
   if (!res.ok) {
-    toast(res.error || '读取目录失败', 'error');
+    toast(res.error || T('读取目录失败'), 'error');
     // 加载失败时回退到当前有效路径
     const pathInput = session.fileEl.querySelector('.sftp-path');
     if (pathInput) pathInput.value = session.currentPath;
@@ -1368,7 +1418,7 @@ function renderFileList(session, entries) {
 
   if (visible.length === 0) {
     // 过滤后无匹配: 保留表头, 显示无匹配提示行 (目录结构不变)
-    tbody.innerHTML = `<tr class="sftp-row sftp-no-match"><td colspan="3">没有匹配「${escapeHtml(keyword)}」的文件</td></tr>`;
+    tbody.innerHTML = `<tr class="sftp-row sftp-no-match"><td colspan="3">${T('没有匹配「{0}」的文件', escapeHtml(keyword))}</td></tr>`;
     return;
   }
 
@@ -1450,20 +1500,20 @@ function refreshDir(session) {
 
 // 新建文件夹
 async function mkdirPrompt(session) {
-  const name = prompt('请输入新文件夹名称', '新建文件夹');
+  const name = prompt(T('请输入新文件夹名称'), T('新建文件夹'));
   if (!name || !name.trim()) return;
   const trimmed = name.trim();
   if (!isValidEntryName(trimmed)) {
-    toast('名称不能包含 / 或 ..', 'error');
+    toast(T('名称不能包含 / 或 ..'), 'error');
     return;
   }
   const remotePath = joinRemotePath(session.currentPath, trimmed);
   const res = await window.nimbus.sftpMkdir(session.sessionId, remotePath);
   if (res.ok) {
-    toast('文件夹已创建', 'success');
+    toast(T('文件夹已创建'), 'success');
     loadDir(session.sessionId, session.currentPath);
   } else {
-    toast(res.error || '创建文件夹失败', 'error');
+    toast(res.error || T('创建文件夹失败'), 'error');
   }
 }
 
@@ -1481,7 +1531,7 @@ async function downloadFile(session, entry) {
   try {
     dl = await window.nimbus.sftpDownload(session.sessionId, remotePath, res.path);
   } catch (err) {
-    dl = { ok: false, error: (err && err.message) || '下载异常' };
+    dl = { ok: false, error: (err && err.message) || T('下载异常') };
   } finally {
     if (gen === sftpFileGen) {
       sftpFileSessionId = null;
@@ -1490,9 +1540,9 @@ async function downloadFile(session, entry) {
     }
   }
   if (dl.ok) {
-    toast(dl.resumed ? `已续传下载 ${entry.name}` : `已下载 ${entry.name}`, 'success');
+    toast(dl.resumed ? T('已续传下载 {0}', entry.name) : T('已下载 {0}', entry.name), 'success');
   } else {
-    toast(dl.error || '下载失败', 'error');
+    toast(dl.error || T('下载失败'), 'error');
   }
 }
 
@@ -1518,26 +1568,31 @@ function showSftpProgress(visible, info) {
   if (!label || !fill) return;
   if (!info || info.phase === 'listing') {
     const scanned = info && info.scanned ? info.scanned : 0;
-    label.textContent = `正在扫描... (${scanned} 项)`;
+    label.textContent = T('正在扫描... ({0} 项)', scanned);
     fill.style.width = '0%';
   } else if (info.phase === 'packing') {
     const done = info.done || 0;
     const total = info.total || 0;
     const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 100;
     const name = info.currentName ? String(info.currentName).split('/').pop() : '';
-    label.textContent = `正在打包 ${done}/${total}${name ? ' · ' + name : ''}`;
+    label.textContent = T('正在打包 {0}/{1}{2}', done, total, name ? ' · ' + name : '');
     fill.style.width = pct + '%';
   } else if (info.phase === 'downloading' || info.phase === 'uploading') {
-    const action = info.phase === 'downloading' ? '下载' : '上传';
+    // 注意: 进度文案按 phase 取完整句式, 避免中文语序在英文下错位 ("正在" + 动作 拼接)
+    const isDownload = info.phase === 'downloading';
     const done = info.done || 0;
     const total = info.total || 0;
     const name = info.currentName ? String(info.currentName).split('/').pop() : '';
     if (total <= 0) {
-      label.textContent = `正在${action}${name ? ' · ' + name : ''}...`;
+      label.textContent = isDownload
+        ? T('正在下载{0}...', name ? ' · ' + name : '')
+        : T('正在上传{0}...', name ? ' · ' + name : '');
       fill.style.width = '0%';
     } else {
       const pct = Math.min(100, Math.round((done / total) * 100));
-      label.textContent = `正在${action} ${pct}%${name ? ' · ' + name : ''}`;
+      label.textContent = isDownload
+        ? T('正在下载 {0}%{1}', pct, name ? ' · ' + name : '')
+        : T('正在上传 {0}%{1}', pct, name ? ' · ' + name : '');
       fill.style.width = pct + '%';
     }
   }
@@ -1554,7 +1609,7 @@ async function downloadDir(session, entry) {
   try {
     res = await window.nimbus.selectSavePath(entry.name + '.zip');
   } catch (err) {
-    toast('无法打开保存窗口', 'error');
+    toast(T('无法打开保存窗口'), 'error');
     return;
   }
   if (!res.ok || !res.path) return;
@@ -1562,7 +1617,7 @@ async function downloadDir(session, entry) {
   // 对话框期间会话可能已关闭/切换
   const current = sessions.get(session.sessionId);
   if (!current || current !== session) {
-    toast('会话已关闭, 下载已取消', 'error');
+    toast(T('会话已关闭, 下载已取消'), 'error');
     return;
   }
 
@@ -1575,13 +1630,13 @@ async function downloadDir(session, entry) {
     try {
       dl = await window.nimbus.sftpDownloadFolder(session.sessionId, remotePath, res.path);
     } catch (err) {
-      toast('打包下载异常: ' + (err.message || '未知错误'), 'error');
+      toast(T('打包下载异常: ') + (err.message || T('未知错误')), 'error');
       return;
     }
     if (dl.ok) {
-      toast(`已下载 ${entry.name}.zip`, 'success');
+      toast(T('已下载 {0}.zip', entry.name), 'success');
     } else {
-      toast(dl.error || '打包下载失败', 'error');
+      toast(dl.error || T('打包下载失败'), 'error');
     }
   } finally {
     // 仅当仍是本次下载时清理进度条 (并发下载时由最新一代接管)
@@ -1594,36 +1649,36 @@ async function downloadDir(session, entry) {
 
 // 删除文件/目录
 async function deleteEntry(session, entry) {
-  const label = entry.isDir ? '文件夹' : '文件';
-  const hint = entry.isDir ? '\n目录将连同内部所有内容一起删除。' : '';
-  if (!confirm(`确定删除${label} "${entry.name}" 吗？${hint}`)) return;
+  const label = entry.isDir ? T('文件夹') : T('文件');
+  const hint = entry.isDir ? T('\n目录将连同内部所有内容一起删除。') : '';
+  if (!confirm(T('确定删除{0} "{1}" 吗？{2}', label, entry.name, hint))) return;
   const remotePath = joinRemotePath(session.currentPath, entry.name);
   const res = await window.nimbus.sftpDelete(session.sessionId, remotePath);
   if (res.ok) {
-    toast(`已删除 ${entry.name}`, 'success');
+    toast(T('已删除 {0}', entry.name), 'success');
     loadDir(session.sessionId, session.currentPath);
   } else {
-    toast(res.error || '删除失败', 'error');
+    toast(res.error || T('删除失败'), 'error');
   }
 }
 
 // 重命名文件/目录
 async function renameEntry(session, entry) {
-  const newName = prompt('请输入新名称', entry.name);
+  const newName = prompt(T('请输入新名称'), entry.name);
   if (!newName || !newName.trim() || newName.trim() === entry.name) return;
   const trimmed = newName.trim();
   if (!isValidEntryName(trimmed)) {
-    toast('名称不能包含 / 或 ..', 'error');
+    toast(T('名称不能包含 / 或 ..'), 'error');
     return;
   }
   const oldPath = joinRemotePath(session.currentPath, entry.name);
   const newPath = joinRemotePath(session.currentPath, trimmed);
   const res = await window.nimbus.sftpRename(session.sessionId, oldPath, newPath);
   if (res.ok) {
-    toast('重命名成功', 'success');
+    toast(T('重命名成功'), 'success');
     loadDir(session.sessionId, session.currentPath);
   } else {
-    toast(res.error || '重命名失败', 'error');
+    toast(res.error || T('重命名失败'), 'error');
   }
 }
 
@@ -1658,7 +1713,7 @@ function showContextMenu(x, y, session, entry) {
   openItem.style.display = isDoc ? '' : 'none';
   previewItem.style.display = isImage ? '' : 'none';
   downloadItem.dataset.ctx = isDir ? 'download-dir' : 'download';
-  downloadItem.textContent = isDir ? '下载 (ZIP)' : '下载';
+  downloadItem.textContent = isDir ? T('下载 (ZIP)') : T('下载');
 
   menu.style.display = 'block';
   // 视口边缘翻转: 菜单超出右/下边缘时左/上移 (需先显示才能测量实际尺寸)
@@ -1784,10 +1839,10 @@ function renderSftpSearchResults(session, res) {
   if (!panel || !list) return;
   const results = (res && Array.isArray(res.results)) ? res.results : [];
   const total = (res && typeof res.total === 'number') ? res.total : results.length;
-  label.textContent = `递归搜索: ${results.length} 条`;
-  hint.textContent = res && res.truncated ? `(超过 ${results.length} 条仅显示前 ${results.length} 条)` : `目录 ${session.currentPath} · maxdepth 3`;
+  label.textContent = T('递归搜索: {0} 条', results.length);
+  hint.textContent = res && res.truncated ? T('(超过 {0} 条仅显示前 {1} 条)', results.length, results.length) : T('目录 {0} · maxdepth 3', session.currentPath);
   if (results.length === 0) {
-    list.innerHTML = `<div class="sftp-search-result-empty">未找到匹配文件</div>`;
+    list.innerHTML = `<div class="sftp-search-result-empty">${T('未找到匹配文件')}</div>`;
   } else {
     list.innerHTML = results.map((r) => {
       const icon = SVG_FILE; // find 结果默认按文件处理 (目录可由点击「进入」)
@@ -1816,13 +1871,13 @@ async function runSftpRecursiveSearch(session, keyword) {
   try {
     res = await window.nimbus.sftpSearch(session.sessionId, cwd, kw, 3);
   } catch (err) {
-    res = { ok: false, degraded: true, error: (err && err.message) || '递归搜索异常' };
+    res = { ok: false, degraded: true, error: (err && err.message) || T('递归搜索异常') };
   }
   // 竞态守卫: 会话已关闭/切换或面板已切换 -> 丢弃
   if (!sessions.has(session.sessionId) || currentSftpSessionId !== session.sessionId) return;
   if (!res || !res.ok) {
     closeSftpSearchResults();
-    toast((res && res.error) || '递归搜索失败', 'info');
+    toast((res && res.error) || T('递归搜索失败'), 'info');
     return;
   }
   renderSftpSearchResults(session, res);
@@ -1849,7 +1904,7 @@ function onSftpSearchResultClick(e) {
   }
   // 普通文件: 进入所在目录 (面板切换, 不联动终端)
   loadDir(session.sessionId, dir || '/');
-  toast(`已进入 ${dir || '/'}`, 'info');
+  toast(T('已进入 {0}', dir || '/'), 'info');
 }
 
 // 绑定 SFTP 搜索栏事件 (init 时调用一次)
@@ -1893,8 +1948,8 @@ function initSftpSearch() {
         return;
       }
       const session = currentSftpSession();
-      if (!session) { toast('请先连接会话', 'info'); return; }
-      if (!sftpSearchKeyword.trim()) { toast('请输入关键字后点击递归搜索', 'info'); return; }
+      if (!session) { toast(T('请先连接会话'), 'info'); return; }
+      if (!sftpSearchKeyword.trim()) { toast(T('请输入关键字后点击递归搜索'), 'info'); return; }
       runSftpRecursiveSearch(session, sftpSearchKeyword);
     });
   }
@@ -1913,7 +1968,7 @@ function showUpdateBadge(payload) {
   updateBadgePayload = payload;
   // GitHub tag_name 通常自带 v 前缀, 拼接前先去重, 避免「发现新版本 vv2.0.1」(B3 修复)
   const displayVersion = version ? (version.startsWith('v') ? version : 'v' + version) : '';
-  btn.textContent = displayVersion ? `发现新版本 ${displayVersion}` : '发现新版本';
+  btn.textContent = displayVersion ? T('发现新版本 {0}', displayVersion) : T('发现新版本');
   btn.style.display = '';
 }
 
@@ -1954,7 +2009,7 @@ async function uploadLocalPaths(session, localPaths) {
     try {
       up = await window.nimbus.sftpUpload(session.sessionId, localPath, remotePath);
     } catch (err) {
-      up = { ok: false, error: (err && err.message) || '上传异常' };
+      up = { ok: false, error: (err && err.message) || T('上传异常') };
     } finally {
       if (gen === sftpFileGen) {
         sftpFileSessionId = null;
@@ -1965,11 +2020,11 @@ async function uploadLocalPaths(session, localPaths) {
     if (up.ok) {
       okCount++;
     } else {
-      toast(up.error || `上传 ${fileName} 失败`, 'error');
+      toast(up.error || T('上传 {0} 失败', fileName), 'error');
     }
   }
   if (okCount > 0) {
-    toast(`已上传 ${okCount} 个文件`, 'success');
+    toast(T('已上传 {0} 个文件', okCount), 'success');
     loadDir(session.sessionId, targetPath);
   }
   return okCount;
@@ -1981,7 +2036,7 @@ async function triggerUpload(session) {
   try {
     res = await window.nimbus.selectFile();
   } catch (err) {
-    toast('无法打开文件选择窗口', 'error');
+    toast(T('无法打开文件选择窗口'), 'error');
     return;
   }
   if (!res.ok || !Array.isArray(res.paths) || res.paths.length === 0) return;
@@ -1989,7 +2044,7 @@ async function triggerUpload(session) {
   // 对话框期间会话可能已关闭/切换
   const current = sessions.get(session.sessionId);
   if (!current || current !== session) {
-    toast('会话已关闭, 上传已取消', 'error');
+    toast(T('会话已关闭, 上传已取消'), 'error');
     return;
   }
 
@@ -2038,11 +2093,11 @@ async function handleSftpDrop(e) {
   clearSftpDropActive();
   const session = currentSftpSession();
   if (!session) {
-    toast('请先连接会话再拖拽上传', 'info');
+    toast(T('请先连接会话再拖拽上传'), 'info');
     return;
   }
   if (sftpDragUploading) {
-    toast('上一批上传仍在进行, 请稍候', 'info');
+    toast(T('上一批上传仍在进行, 请稍候'), 'info');
     return;
   }
   const dt = e.dataTransfer;
@@ -2071,7 +2126,7 @@ async function handleSftpDrop(e) {
 
   // Tauri 拖拽上传: 拿不到磁盘路径, 直接读 File 字节流逐个上传到当前目录
   if (localPaths.length === 0) {
-    if (dirCount > 0) toast('文件夹暂不支持拖拽上传', 'info');
+    if (dirCount > 0) toast(T('文件夹暂不支持拖拽上传'), 'info');
     sftpDragUploading = true;
     let okCount = 0;
     let failCount = 0;
@@ -2086,15 +2141,15 @@ async function handleSftpDrop(e) {
             okCount++;
           } else {
             failCount++;
-            toast(`上传 ${file.name} 失败: ${(res && res.error) || '未知错误'}`, 'error');
+            toast(T('上传 {0} 失败: {1}', file.name, (res && res.error) || '未知错误'), 'error');
           }
         } catch (err) {
           failCount++;
-          toast(`上传 ${file.name} 失败: ${(err && err.message) || '未知错误'}`, 'error');
+          toast(T('上传 {0} 失败: {1}', file.name, (err && err.message) || '未知错误'), 'error');
         }
       }
       if (okCount > 0) {
-        toast(`已上传 ${okCount} 个文件${failCount > 0 ? `, ${failCount} 个失败` : ''}`, okCount > failCount ? 'success' : 'error');
+        toast(T('已上传 {0} 个文件{1}', okCount, failCount > 0 ? `, ${failCount} 个失败` : ''), okCount > failCount ? 'success' : 'error');
         refreshDir(session);
       }
     } finally {
@@ -2102,7 +2157,7 @@ async function handleSftpDrop(e) {
     }
     return;
   }
-  if (dirCount > 0) toast(`已忽略 ${dirCount} 个文件夹 (暂不支持目录上传)`, 'info');
+  if (dirCount > 0) toast(T('已忽略 {0} 个文件夹 (暂不支持目录上传)', dirCount), 'info');
 
   // 登记路径 (主进程过滤不存在/目录) -> 仅上传登记成功的路径
   // P0-4: 路径解析与登记全部移到 preload (webUtils.getPathForFile), 渲染层只传真实 File 数组
@@ -2110,12 +2165,12 @@ async function handleSftpDrop(e) {
   try {
     reg = await window.nimbus.sftpRegisterUploadPaths(localFiles);
   } catch (err) {
-    toast('拖拽上传失败: ' + (err.message || '未知错误'), 'error');
+    toast(T('拖拽上传失败: ') + (err.message || T('未知错误')), 'error');
     return;
   }
   const accepted = (reg && reg.ok && Array.isArray(reg.accepted)) ? reg.accepted : [];
   if (accepted.length === 0) {
-    toast('没有可上传的文件 (文件夹暂不支持)', 'info');
+    toast(T('没有可上传的文件 (文件夹暂不支持)'), 'info');
     return;
   }
 
@@ -2165,7 +2220,7 @@ async function openDocViewer(session, entry, remotePathOverride) {
   const remotePath = remotePathOverride || joinRemotePath(session.currentPath, entry.name);
   const ext = getDocExtension(entry.name);
   if (!ext) {
-    toast('不支持打开该文件类型', 'error');
+    toast(T('不支持打开该文件类型'), 'error');
     return;
   }
   // 主进程内部下载到 DOC_DIR (白名单校验 + 防目录穿越; 大文件分段预览由主进程处理)
@@ -2173,11 +2228,11 @@ async function openDocViewer(session, entry, remotePathOverride) {
   try {
     res = await window.nimbus.docOpen(session.sessionId, remotePath);
   } catch (err) {
-    toast('打开文档异常: ' + (err.message || '未知错误'), 'error');
+    toast(T('打开文档异常: ') + (err.message || T('未知错误')), 'error');
     return;
   }
   if (!res || !res.ok) {
-    toast((res && res.error) || '打开文档失败', 'error');
+    toast((res && res.error) || T('打开文档失败'), 'error');
     return;
   }
   const doc = {
@@ -2213,7 +2268,7 @@ function openDocTab(doc) {
   tab.innerHTML = `
     <span class="tab-dot"></span>
     <span class="tab-name">📄 ${escapeHtml(doc.name)}</span>
-    <button class="tab-close" title="关闭">
+    <button class="tab-close" title="${T('关闭')}">
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>
   `;
@@ -2273,7 +2328,7 @@ async function closeDocTab(docId) {
   if (!doc) return;
   try { await window.nimbus.docClose(doc.filename); } catch (e) {}
   // 操作日志 (渲染侧补充: 文档关闭主进程未记录, 属 UI 生命周期事件)
-  try { await window.nimbus.auditLog({ type: 'doc.close', target: doc.remotePath, result: 'success', session: doc.sessionId, detail: `关闭文档 ${doc.name}` }); } catch (e) {}
+  try { await window.nimbus.auditLog({ type: 'doc.close', target: doc.remotePath, result: 'success', session: doc.sessionId, detail: T('关闭文档 {0}', doc.name) }); } catch (e) {}
   docTabs.delete(docId);
   if (doc.tabEl) doc.tabEl.remove();
   // 释放 pdfjs 文档资源 (关闭渲染器)
@@ -2312,9 +2367,9 @@ async function renderDocContent(doc) {
   } else if (doc.ext === '.docx') {
     renderDocDocx(doc);
   } else if (doc.ext === '.doc') {
-    el.innerHTML = `<div class="doc-error">旧版 .doc 暂不支持，请转存为 .docx 后打开</div>`;
+    el.innerHTML = `<div class="doc-error">${T('旧版 .doc 暂不支持，请转存为 .docx 后打开')}</div>`;
   } else {
-    el.innerHTML = `<div class="doc-error">不支持打开该文件类型</div>`;
+    el.innerHTML = `<div class="doc-error">${T('不支持打开该文件类型')}</div>`;
   }
 }
 
@@ -2340,10 +2395,10 @@ function buildDocTextEditor(doc) {
     bar.className = 'doc-truncate-bar';
     const total = doc.totalSize || 0;
     const preview = doc.previewText ? doc.previewText.length : 0;
-    bar.innerHTML = `<span>文件过大，已加载前 ${formatSize(preview)} / 共 ${formatSize(total)}，是否加载全部？</span>`;
+    bar.innerHTML = `<span>${T('文件过大，已加载前 {0} / 共 {1}，是否加载全部？', formatSize(preview), formatSize(total))}</span>`;
     const btn = document.createElement('button');
     btn.className = 'btn-primary';
-    btn.textContent = '加载全部';
+    btn.textContent = T('加载全部');
     btn.id = 'docLoadAllBtn';
     btn.addEventListener('click', () => loadFullDoc(doc));
     bar.appendChild(btn);
@@ -2397,7 +2452,7 @@ function updateDocTextControls(doc) {
   }
   if (toggle) {
     toggle.style.display = '';
-    toggle.textContent = doc._editorMode === 'view' ? '编辑' : '高亮';
+    toggle.textContent = doc._editorMode === 'view' ? T('编辑') : T('高亮');
   }
   if (saveBtn) {
     // 分段预览只读 (避免误保存截断文件): 仅完整加载且处于编辑模式时可保存
@@ -2409,7 +2464,7 @@ function updateDocTextControls(doc) {
 function toggleDocEditorMode(doc) {
   if (!doc || !doc.isText) return;
   if (doc.truncated) {
-    toast('文件较大，请先点击「加载全部」后再编辑', 'info');
+    toast(T('文件较大，请先点击「加载全部」后再编辑'), 'info');
     return;
   }
   const wrap = doc._wrap || doc.bodyEl;
@@ -2433,11 +2488,11 @@ async function loadFullDoc(doc) {
   try {
     res = await window.nimbus.docLoadFull(doc.sessionId, doc.filename);
   } catch (err) {
-    toast('加载全部失败: ' + (err.message || '未知错误'), 'error');
+    toast(T('加载全部失败: ') + (err.message || T('未知错误')), 'error');
     return;
   }
   if (!res || !res.ok) {
-    toast((res && res.error) || '加载全部失败', 'error');
+    toast((res && res.error) || T('加载全部失败'), 'error');
     return;
   }
   try {
@@ -2445,14 +2500,14 @@ async function loadFullDoc(doc) {
     if (!fr.ok) throw new Error('HTTP ' + fr.status);
     doc._text = await fr.text();
   } catch (err) {
-    toast('加载全部失败: ' + (err.message || '未知错误'), 'error');
+    toast(T('加载全部失败: ') + (err.message || T('未知错误')), 'error');
     return;
   }
   // 完成: 标记完整加载, 移除 truncate bar, 切换编辑模式
   doc.truncated = false;
   doc._editorMode = 'edit';
   renderDocTextView(doc);
-  toast('已加载全部内容，可编辑保存', 'success');
+  toast(T('已加载全部内容，可编辑保存'), 'success');
 }
 
 // 文本类文档渲染入口: 大文件 -> 分段预览; 小文件 -> fetch 全量后默认编辑模式
@@ -2477,7 +2532,7 @@ function renderDocText(doc) {
     doc._text = text;
     renderDocTextView(doc);
   }).catch((err) => {
-    el.innerHTML = `<div class="doc-error">加载失败: ${escapeHtml(err.message)}</div>`;
+    el.innerHTML = `<div class="doc-error">${T('加载失败: {0}', escapeHtml(err.message))}</div>`;
   });
 }
 
@@ -2488,15 +2543,15 @@ async function saveDocText(doc) {
   const ta = wrap ? wrap.querySelector('#docTextArea') : null;
   if (!ta || !doc || doc.isText !== true) return;
   if (doc.truncated) {
-    toast('文件较大，请先点击「加载全部」后再保存', 'info');
+    toast(T('文件较大，请先点击「加载全部」后再保存'), 'info');
     return;
   }
   const res = await window.nimbus.docSave(doc.sessionId, doc.remotePath, ta.value);
   if (res && res.ok) {
     doc._text = ta.value;
-    toast(`已保存 ${doc.name}`, 'success');
+    toast(T('已保存 {0}', doc.name), 'success');
   } else {
-    toast((res && res.error) || '保存失败', 'error');
+    toast((res && res.error) || T('保存失败'), 'error');
   }
 }
 
@@ -2505,17 +2560,17 @@ async function renderDocPdf(doc) {
   const el = doc.bodyEl;
   el.innerHTML = `
     <div class="pdf-toolbar">
-      <button class="icon-btn" id="pdfPrev" title="上一页">◀</button>
+      <button class="icon-btn" id="pdfPrev" title="${T('上一页')}">◀</button>
       <span class="pdf-page-label" id="pdfPageLabel">1 / 1</span>
-      <button class="icon-btn" id="pdfNext" title="下一页">▶</button>
+      <button class="icon-btn" id="pdfNext" title="${T('下一页')}">▶</button>
       <span class="pdf-toolbar-sep"></span>
-      <button class="icon-btn" id="pdfZoomOut" title="缩小">−</button>
+      <button class="icon-btn" id="pdfZoomOut" title="${T('缩小')}">−</button>
       <span class="pdf-zoom-label" id="pdfZoomLabel">100%</span>
-      <button class="icon-btn" id="pdfZoomIn" title="放大">+</button>
-      <button class="icon-btn" id="pdfFit" title="适应宽度">⛶</button>
+      <button class="icon-btn" id="pdfZoomIn" title="${T('放大')}">+</button>
+      <button class="icon-btn" id="pdfFit" title="${T('适应宽度')}">⛶</button>
     </div>
     <div class="pdf-stage" id="pdfStage">
-      <div class="pdf-empty">正在加载 PDF...</div>
+      <div class="pdf-empty">${T('正在加载 PDF...')}</div>
     </div>`;
   const stage = el.querySelector('#pdfStage');
 
@@ -2595,7 +2650,7 @@ async function renderDocPdf(doc) {
     // 首次绘制 (等容器布局稳定)
     afterLayout(() => { state.drawPage(); updateNav(); });
   } catch (err) {
-    stage.innerHTML = `<div class="doc-error">PDF 加载失败: ${escapeHtml(err.message)}</div>`;
+    stage.innerHTML = `<div class="doc-error">${T('PDF 加载失败: {0}', escapeHtml(err.message))}</div>`;
   }
 }
 
@@ -2665,7 +2720,7 @@ function sanitizeHtml(html) {
 // DOCX: mammoth 外部 script -> convertToHtml(arrayBuffer) -> 净化后注入只读 HTML
 async function renderDocDocx(doc) {
   const el = doc.bodyEl;
-  el.innerHTML = `<div class="docx-loading"><div class="overlay-spinner"></div><span>正在解析 DOCX...</span></div>`;
+  el.innerHTML = `<div class="docx-loading"><div class="overlay-spinner"></div><span>${T('正在解析 DOCX...')}</span></div>`;
   try {
     const res = await fetch(doc.url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -2673,7 +2728,7 @@ async function renderDocDocx(doc) {
     const result = await window.mammoth.convertToHtml({ arrayBuffer: buf });
     el.innerHTML = `<div class="docx-content">${sanitizeHtml(result.value || '')}</div>`;
   } catch (err) {
-    el.innerHTML = `<div class="doc-error">DOCX 解析失败: ${escapeHtml(err.message)}</div>`;
+    el.innerHTML = `<div class="doc-error">${T('DOCX 解析失败: {0}', escapeHtml(err.message))}</div>`;
   }
 }
 
@@ -2935,7 +2990,7 @@ async function openPreview(sessionId, remotePath, name) {
   const token = previewState.navToken;
   const fetched = await getOrFetchPreview(sessionId, remotePath, name);
   if (!fetched || !fetched.ok) {
-    toast((fetched && fetched.error) || '预览失败', 'error');
+    toast((fetched && fetched.error) || T('预览失败'), 'error');
     return;
   }
   // 代际校验: 期间若有新的 open/close, 本次结果过期 -> 缓存项保留 (LRU 管理), 不再操作 UI
@@ -2954,7 +3009,7 @@ async function openPreview(sessionId, remotePath, name) {
   $('#previewTitle').textContent = previewState.name;
   modal.style.display = 'flex';
   img.onerror = () => {
-    toast('图片加载失败', 'error');
+    toast(T('图片加载失败'), 'error');
     closePreview();
   };
   img.src = fetched.url;
@@ -3017,14 +3072,14 @@ function previewRotate90() {
 // 预览窗口「下载」: 走 preview:saveAs -> 系统保存对话框 -> 登记 sftpDownload
 async function previewDownload() {
   if (!previewState.sessionId || !previewState.remotePath) {
-    toast('预览会话已失效', 'error');
+    toast(T('预览会话已失效'), 'error');
     return;
   }
   const res = await window.nimbus.previewSaveAs(previewState.sessionId, previewState.remotePath);
   if (res && res.ok) {
-    toast(`已保存 ${previewState.name}`, 'success');
+    toast(T('已保存 {0}', previewState.name), 'success');
   } else {
-    toast((res && res.error) || '保存失败', 'error');
+    toast((res && res.error) || T('保存失败'), 'error');
   }
 }
 
@@ -3052,7 +3107,7 @@ async function previewNav(delta) {
 
   const newIndex = previewState.imageIndex + delta;
   if (newIndex < 0 || newIndex >= list.length) {
-    toast(newIndex < 0 ? '已是第一张' : '已是最后一张', 'info');
+    toast(newIndex < 0 ? T('已是第一张') : T('已是最后一张'), 'info');
     return;
   }
   const target = list[newIndex];
@@ -3071,7 +3126,7 @@ async function previewNav(delta) {
   try {
     const fetched = await getOrFetchPreview(previewState.sessionId, target.remotePath, target.name);
     if (!fetched || !fetched.ok) {
-      toast((fetched && fetched.error) || '切换图片失败', 'error');
+      toast((fetched && fetched.error) || T('切换图片失败'), 'error');
       return; // 加载失败: 保持当前图片
     }
     // 代际校验: 期间若发生 close/open, 本次结果过期 -> 缓存项保留 (LRU 管理), 不再操作 UI
@@ -3090,7 +3145,7 @@ async function previewNav(delta) {
     // 切换专用 onerror: 新图加载失败时不关闭预览, 回退到上一张
     img.onerror = () => {
       if (previewState.sessionId === null) return; // 预览已关闭, 不再回退
-      toast('图片加载失败', 'error');
+      toast(T('图片加载失败'), 'error');
       restorePreviewImage(prev);
     };
     img.src = fetched.url;
@@ -3109,7 +3164,7 @@ async function restorePreviewImage(prev) {
   const token = previewState.navToken; // 记录回退代际
   const fetched = await getOrFetchPreview(prev.sessionId, prev.remotePath, prev.name);
   if (!fetched || !fetched.ok) {
-    toast((fetched && fetched.error) || '恢复图片失败', 'error');
+    toast((fetched && fetched.error) || T('恢复图片失败'), 'error');
     closePreview();
     return;
   }
@@ -3126,7 +3181,7 @@ async function restorePreviewImage(prev) {
   const img = $('#previewImg');
   $('#previewTitle').textContent = previewState.name;
   img.onerror = () => {
-    toast('图片加载失败', 'error');
+    toast(T('图片加载失败'), 'error');
     closePreview();
   };
   img.src = fetched.url;
@@ -3162,42 +3217,84 @@ function initPreviewEvents() {
   });
 }
 
+// ============ 设置面板 (版本 / 更新检查 / 语言) ============
+// 入口: 标签栏齿轮按钮; 形态与「命令收藏」面板一致 (右上浮层)。
+// 版本号由构建期注入 (vite define: __APP_VERSION__); 更新检查复用后端 update_check。
+let settingsUpdateState = null; // 最近一次检查结果 { ok, hasUpdate, current, latest, url }
+
+function openSettingsPanel() {
+  const panel = $('#settingsPanel');
+  if (!panel) return;
+  updateSettingsPanel();
+  panel.style.display = 'flex';
+}
+
+function closeSettingsPanel() {
+  const panel = $('#settingsPanel');
+  if (panel) panel.style.display = 'none';
+}
+
+function toggleSettingsPanel() {
+  const panel = $('#settingsPanel');
+  if (!panel) return;
+  if (panel.style.display === 'flex') closeSettingsPanel();
+  else openSettingsPanel();
+}
+
+function formatUpdateStatus(res) {
+  if (!res || res.ok !== true) return T('检查更新失败');
+  if (res.hasUpdate) return T('发现新版本 {0}', res.latest || '');
+  return T('已是最新版本');
+}
+
+// 同步面板内容: 版本号 / 语言下拉 / 上次检查结果
+function updateSettingsPanel() {
+  const verEl = $('#settingsVersion');
+  if (verEl) {
+    const v = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : '';
+    verEl.textContent = v ? ('v' + v) : '-';
+  }
+  const sel = $('#settingsLangSelect');
+  if (sel && i18n) sel.value = i18n.lang();
+  const status = $('#settingsUpdateStatus');
+  if (status) status.textContent = settingsUpdateState ? formatUpdateStatus(settingsUpdateState) : '';
+  const link = $('#settingsUpdateLink');
+  if (link) {
+    const st = settingsUpdateState;
+    const url = (st && st.ok === true && st.hasUpdate) ? (st.url || '') : '';
+    link.style.display = url ? '' : 'none';
+    link.dataset.url = url;
+  }
+}
+
+// 手动检查更新 (结果仅展示, 不自动下载)
+async function checkUpdate() {
+  const status = $('#settingsUpdateStatus');
+  const btn = $('#settingsCheckUpdateBtn');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = T('检查中...');
+  try {
+    settingsUpdateState = await window.nimbus.updateCheck();
+  } catch (e) {
+    settingsUpdateState = { ok: false };
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  updateSettingsPanel();
+}
+
 // ============ 操作日志查看面板 ============
 // 打开面板 (渲染侧手动埋点示例: 面板为纯 UI 事件, 主进程不感知, 由 renderer 补充记录)
 async function openAuditPanel() {
   $('#auditOverlay').style.display = 'flex';
   try {
-    await window.nimbus.auditLog({ type: 'audit.panel', target: '操作日志面板', result: 'success', detail: '打开操作日志面板' });
+    await window.nimbus.auditLog({ type: 'audit.panel', target: T('操作日志面板'), result: 'success', detail: T('打开操作日志面板') });
   } catch (e) {}
   refreshAuditLog();
 }
 
-// 操作类型的中文标签 (仅用于下拉展示; 未收录的类型直接显示原始 type)
-const AUDIT_TYPE_LABELS = {
-  'ssh.connect': '连接',
-  'ssh.disconnect': '断开',
-  'ssh.reconnect': '重连',
-  'sftp.list': '列目录',
-  'sftp.cd': '切换目录',
-  'sftp.upload': '上传',
-  'sftp.download': '下载',
-  'sftp.downloadFolder': '下载 ZIP',
-  'sftp.mkdir': '新建文件夹',
-  'sftp.rename': '重命名',
-  'sftp.delete': '删除',
-  'doc.open': '打开文档',
-  'doc.loadFull': '加载全部',
-  'doc.save': '保存文档',
-  'doc.close': '关闭文档',
-  'preview.open': '图片预览',
-  'preview.saveAs': '预览另存',
-  'tunnel.start': '隧道建立',
-  'tunnel.stop': '隧道停止',
-  'tunnel.error': '隧道错误',
-  'config.export': '配置导出',
-  'config.import': '配置导入',
-  'audit.panel': '面板操作',
-};
+// 操作类型的中文标签已移入 i18n 模块 (window.I18n.AUDIT_TYPE_LABELS):
+// 若留在本文件作为模块级常量, 其值会在加载时求值, 语言切换后无法更新。
 
 // 用后端返回的真实类型重建「类型」下拉:
 // 背景: 原实现把类型硬编码在 index.html, 与日志实际写入的 type 不一致 (日志写的是
@@ -3208,10 +3305,12 @@ const AUDIT_TYPE_LABELS = {
 function renderAuditTypeOptions(types) {
   const sel = $('#auditTypeFilter');
   if (!sel || !Array.isArray(types)) return; // 旧后端无 types 字段 -> 保持现有选项不变
+  const labels = (window.I18n && window.I18n.AUDIT_TYPE_LABELS) || {};
   const list = types.filter((t) => typeof t === 'string' && t !== '');
   const current = sel.value;
-  const options = ['<option value="">全部类型</option>'].concat(list.map((t) => {
-    const label = AUDIT_TYPE_LABELS[t] ? `${t} ${AUDIT_TYPE_LABELS[t]}` : t;
+  const options = [`<option value="">${T('全部类型')}</option>`].concat(list.map((t) => {
+    const zh = labels[t] || '';
+    const label = zh ? `${t} ${T(zh)}` : t;
     return `<option value="${escapeHtml(t)}">${escapeHtml(label)}</option>`;
   }));
   // 类型集合未变化时跳过重建, 避免无谓的 DOM 抖动/焦点丢失 (按完整列表比较, 不能用数量)
@@ -3240,7 +3339,7 @@ async function refreshAuditLog() {
   loading.style.display = 'flex';
   table.style.display = 'none';
   empty.style.display = 'none';
-  empty.textContent = '暂无日志';
+  empty.textContent = T('暂无日志');
 
   let res;
   try {
@@ -3252,17 +3351,17 @@ async function refreshAuditLog() {
   } catch (err) {
     loading.style.display = 'none';
     empty.style.display = 'flex';
-    empty.textContent = '查询失败: ' + (err.message || '未知错误');
+    empty.textContent = T('查询失败: ') + (err.message || T('未知错误'));
     return;
   }
   loading.style.display = 'none';
 
   // 查询失败: 读取 res.error 显示错误, 不展示误导性的空态/共 0 条
   if (res && res.ok === false) {
-    const errMsg = (res.error && String(res.error)) ? String(res.error) : '未知错误';
+    const errMsg = (res.error && String(res.error)) ? String(res.error) : T('未知错误');
     tbody.innerHTML = '';
-    $('#auditCount').textContent = '查询失败';
-    empty.textContent = '查询失败: ' + errMsg;
+    $('#auditCount').textContent = T('查询失败');
+    empty.textContent = T('查询失败: ') + errMsg;
     empty.style.display = 'flex';
     return;
   }
@@ -3271,7 +3370,7 @@ async function refreshAuditLog() {
   const total = (res && typeof res.total === 'number') ? res.total : 0;
   // 按后端返回的真实类型重建类型下拉 (见 renderAuditTypeOptions 注释)
   renderAuditTypeOptions(res && res.types);
-  $('#auditCount').textContent = `共 ${total} 条`;
+  $('#auditCount').textContent = T('共 {0} 条', total);
 
   if (items.length === 0) {
     tbody.innerHTML = '';
@@ -3312,7 +3411,7 @@ function openTunnelPanel() {
   const hint = $('#tunnelSessionHint');
   if (!s) {
     tunnelPanelSessionId = null;
-    if (hint) hint.textContent = '请先连接会话';
+    if (hint) hint.textContent = T('请先连接会话');
     renderTunnelList([]);
     return;
   }
@@ -3335,7 +3434,7 @@ async function refreshTunnelList() {
     const res = await window.nimbus.tunnelList(s.sessionId);
     if (res && res.ok && Array.isArray(res.tunnels)) live = res.tunnels;
   } catch (e) {
-    toast('获取隧道列表失败', 'error');
+    toast(T('获取隧道列表失败'), 'error');
     return;
   }
 
@@ -3383,11 +3482,11 @@ function renderTunnelList(rows) {
 
   list.innerHTML = items.map((t) => {
     const name = t.name ? `<span class="tunnel-item-name">${escapeHtml(t.name)}</span>` : '';
-    const statusLabel = { running: '运行中', starting: '启动中', stopped: '已停止', failed: '失败' }[t.status] || t.status;
+    const statusLabel = { running: T('运行中'), starting: T('启动中'), stopped: T('已停止'), failed: T('失败') }[t.status] || t.status;
     const timeLabel = t.createdAt ? formatTime(t.createdAt) : '-';
     const errorHtml = t.error ? `<div class="tunnel-item-error" title="${escapeHtml(t.error)}">${escapeHtml(t.error)}</div>` : '';
     const stopBtn = (t.status === 'running' || t.status === 'starting')
-      ? `<button class="tunnel-btn" data-act="stop" data-port="${t.localPort}" title="停止隧道">停止</button>`
+      ? `<button class="tunnel-btn" data-act="stop" data-port="${t.localPort}" title="${T('停止隧道')}">${T('停止')}</button>`
       : '';
     return `
       <div class="tunnel-item" data-tunnel-id="${escapeHtml(t.id || '')}" data-port="${t.localPort}">
@@ -3396,13 +3495,13 @@ function renderTunnelList(rows) {
             <span>localhost:${t.localPort}</span><span class="tunnel-arrow">→</span><span>${escapeHtml(t.remoteHost)}:${t.remotePort}</span>
             ${name}
           </div>
-          <div class="tunnel-item-meta">创建于 ${timeLabel}</div>
+          <div class="tunnel-item-meta">${T('创建于 {0}', timeLabel)}</div>
           ${errorHtml}
         </div>
         <span class="tunnel-status ${t.status}">${statusLabel}</span>
         <div class="tunnel-item-actions">
           ${stopBtn}
-          <button class="tunnel-btn danger" data-act="delete" data-port="${t.localPort}" title="删除隧道 (停止并移出连接配置)">删除</button>
+          <button class="tunnel-btn danger" data-act="delete" data-port="${t.localPort}" title="${T('删除隧道 (停止并移出连接配置)')}">${T('删除')}</button>
         </div>
       </div>`;
   }).join('');
@@ -3423,7 +3522,7 @@ function renderTunnelList(rows) {
 async function addTunnel() {
   const s = tunnelPanelSessionId ? sessions.get(tunnelPanelSessionId) : null;
   if (!s || s.status !== 'connected') {
-    toast('会话未连接, 无法创建隧道', 'error');
+    toast(T('会话未连接, 无法创建隧道'), 'error');
     return;
   }
   const localPort = parseInt($('#tunnelLocalPort').value, 10);
@@ -3432,12 +3531,12 @@ async function addTunnel() {
   const name = $('#tunnelName').value.trim();
 
   if (!Number.isInteger(localPort) || localPort < 1 || localPort > 65535) {
-    toast('本地端口无效 (1-65535)', 'error');
+    toast(T('本地端口无效 (1-65535)'), 'error');
     $('#tunnelLocalPort').focus();
     return;
   }
   if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65535) {
-    toast('远端端口无效 (1-65535)', 'error');
+    toast(T('远端端口无效 (1-65535)'), 'error');
     $('#tunnelRemotePort').focus();
     return;
   }
@@ -3447,11 +3546,11 @@ async function addTunnel() {
   try {
     res = await window.nimbus.tunnelStart(s.sessionId, cfg);
   } catch (e) {
-    toast('创建隧道异常: ' + (e.message || '未知错误'), 'error');
+    toast(T('创建隧道异常: ') + (e.message || T('未知错误')), 'error');
     return;
   }
   if (res && res.ok) {
-    toast(`隧道已建立: localhost:${localPort} -> ${remoteHost}:${remotePort}`, 'success');
+    toast(T('隧道已建立: localhost:{0} -> {1}:{2}', localPort, remoteHost, remotePort), 'success');
     // 持久化到连接配置 (下次连接自动建立); 防重复 (同端口不重复写)
     persistTunnelToConnection(s, cfg);
     $('#tunnelLocalPort').value = '';
@@ -3460,7 +3559,7 @@ async function addTunnel() {
     $('#tunnelName').value = '';
     refreshTunnelList();
   } else {
-    toast((res && res.error) || '创建隧道失败', 'error');
+    toast((res && res.error) || T('创建隧道失败'), 'error');
   }
 }
 
@@ -3487,9 +3586,9 @@ async function stopTunnelItem(localPort) {
   if (!s) return;
   const res = await window.nimbus.tunnelStop(s.sessionId, localPort);
   if (res && res.ok) {
-    toast(`隧道已停止: localhost:${localPort}`, 'info');
+    toast(T('隧道已停止: localhost:{0}', localPort), 'info');
   } else {
-    toast((res && res.error) || '停止隧道失败', 'error');
+    toast((res && res.error) || T('停止隧道失败'), 'error');
   }
   refreshTunnelList();
 }
@@ -3498,7 +3597,7 @@ async function stopTunnelItem(localPort) {
 async function deleteTunnelItem(localPort) {
   const s = tunnelPanelSessionId ? sessions.get(tunnelPanelSessionId) : null;
   if (!s) return;
-  if (!confirm(`确定删除隧道 localhost:${localPort} 吗？\n将停止该隧道并从连接配置中移除。`)) return;
+  if (!confirm(T('确定删除隧道 localhost:{0} 吗？\\n将停止该隧道并从连接配置中移除。', localPort))) return;
   await window.nimbus.tunnelStop(s.sessionId, localPort).catch(() => {});
   if (s.connId) {
     const conn = connections.find((c) => c.id === s.connId);
@@ -3507,7 +3606,7 @@ async function deleteTunnelItem(localPort) {
       persistConnections();
     }
   }
-  toast('隧道已删除', 'info');
+  toast(T('隧道已删除'), 'info');
   refreshTunnelList();
 }
 
@@ -3541,8 +3640,8 @@ function openMonitorPanel() {
   if (!s) {
     monitorPanelSessionId = null;
     stopMonitorAutoRefresh();
-    if (hint) hint.textContent = '请先连接会话';
-    $('#monitorGrid').innerHTML = '<div class="monitor-card wide"><div class="monitor-na">请先连接 SSH 会话, 再查看服务器健康指标。</div></div>';
+    if (hint) hint.textContent = T('请先连接会话');
+    $('#monitorGrid').innerHTML = `<div class="monitor-card wide"><div class="monitor-na">${T('请先连接 SSH 会话, 再查看服务器健康指标。')}</div></div>`;
     $('#monitorLoading').style.display = 'none';
     return;
   }
@@ -3577,7 +3676,7 @@ function toggleMonitorAutoRefresh() {
   if (!toggle.checked) return;
   if (!monitorPanelSessionId) {
     toggle.checked = false;
-    toast('请先连接会话', 'info');
+    toast(T('请先连接会话'), 'info');
     return;
   }
   monitorAutoTimer = setInterval(() => {
@@ -3593,7 +3692,7 @@ function toggleMonitorAutoRefresh() {
 async function refreshMonitor(silent) {
   const s = monitorPanelSessionId ? sessions.get(monitorPanelSessionId) : null;
   if (!s) {
-    if (!silent) toast('请先连接会话', 'info');
+    if (!silent) toast(T('请先连接会话'), 'info');
     return;
   }
   const loading = $('#monitorLoading');
@@ -3611,17 +3710,17 @@ async function refreshMonitor(silent) {
     res = await window.nimbus.monitorFetch(s.sessionId);
   } catch (err) {
     loading.style.display = 'none';
-    if (errorEl) { errorEl.textContent = '获取监控数据异常: ' + (err.message || '未知错误'); errorEl.style.display = 'block'; }
-    if (!silent) toast('获取监控数据失败', 'error');
+    if (errorEl) { errorEl.textContent = T('获取监控数据异常: ') + (err.message || T('未知错误')); errorEl.style.display = 'block'; }
+    if (!silent) toast(T('获取监控数据失败'), 'error');
     return;
   }
   loading.style.display = 'none';
 
   if (!res || res.ok === false) {
-    const msg = (res && res.error) ? res.error : '未知错误';
-    if (errorEl) { errorEl.textContent = '获取监控数据失败: ' + msg; errorEl.style.display = 'block'; }
+    const msg = (res && res.error) ? res.error : T('未知错误');
+    if (errorEl) { errorEl.textContent = T('获取监控数据失败: ') + msg; errorEl.style.display = 'block'; }
     grid.innerHTML = '';
-    if (!silent) toast('获取监控数据失败', 'error');
+    if (!silent) toast(T('获取监控数据失败'), 'error');
     return;
   }
 
@@ -3642,7 +3741,7 @@ async function refreshMonitor(silent) {
     }
   }
 
-  if (fetchedEl) fetchedEl.textContent = res.fetchedAt ? `采集于 ${formatMonitorTime(res.fetchedAt)}` : '';
+  if (fetchedEl) fetchedEl.textContent = res.fetchedAt ? T('采集于 {0}', formatMonitorTime(res.fetchedAt)) : '';
   pushMonitorGpuSample(res);
   renderMonitorCards(res, grid);
 }
@@ -3684,17 +3783,17 @@ function pctBarClass(pct) {
 function renderMonitorCards(res, grid) {
   const errors = (res.errors && typeof res.errors === 'object') ? res.errors : {};
   const sections = [];
-  const errorNote = (key) => (errors[key] ? `<div class="monitor-na">${escapeHtml(errors[key])}</div>` : '<div class="monitor-na">无法获取</div>');
+  const errorNote = (key) => (errors[key] ? `<div class="monitor-na">${escapeHtml(errors[key])}</div>` : `<div class="monitor-na">${T('无法获取')}</div>`);
 
   // ---- 基本信息 (wide) ----
   const info = res.info || {};
   const infoRows = [
-    ['服务器', res.identity || '-'],
-    ['主机名', info.hostname || '-'],
-    ['系统', info.os || '-'],
-    ['服务器时间', info.date || '-'],
+    [T('服务器'), res.identity || '-'],
+    [T('主机名'), info.hostname || '-'],
+    [T('系统'), info.os || '-'],
+    [T('服务器时间'), info.date || '-'],
   ].map(([k, v]) => `<div class="monitor-metric"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(v)}</span></div>`).join('');
-  sections.push(`<div class="monitor-card wide"><h4>基本信息</h4>${infoRows}</div>`);
+  sections.push(`<div class="monitor-card wide"><h4>${T('基本信息')}</h4>${infoRows}</div>`);
 
   // ---- GPU (基本信息下方; 无 nvidia-smi 时降级文案, 不阻塞面板) ----
   const gpu = res.gpu;
@@ -3707,18 +3806,18 @@ function renderMonitorCards(res, grid) {
     const svg = (gpuChartLib && monitorGpuHistory) ? gpuChartLib.buildGpuChartSvg(monitorGpuHistory.points, buildGpuChartOpts()) : '';
     const chartHtml = svg
       ? `<div class="monitor-gpu-chart">${svg}</div>`
-      : '<div class="monitor-na">等待采样数据... (开启自动刷新后每 5 秒采集一次)</div>';
+      : `<div class="monitor-na">${T('等待采样数据... (开启自动刷新后每 5 秒采集一次)')}</div>`;
     const nowHtml = `
       <div class="monitor-gpu-now">
-        <span class="monitor-gpu-chip"><b>利用率</b>${fmtNum(g.util, 1)}%</span>
-        <span class="monitor-gpu-chip"><b>显存</b>${fmtNum(g.memPct, 1)}%</span>
-        <span class="monitor-gpu-chip"><b>温度</b>${fmtNum(g.temp, 0)}°C</span>
-        <span class="monitor-gpu-chip"><b>功耗</b>${fmtNum(g.power, 1)}W</span>
+        <span class="monitor-gpu-chip"><b>${T('利用率')}</b>${fmtNum(g.util, 1)}%</span>
+        <span class="monitor-gpu-chip"><b>${T('显存')}</b>${fmtNum(g.memPct, 1)}%</span>
+        <span class="monitor-gpu-chip"><b>${T('温度')}</b>${fmtNum(g.temp, 0)}°C</span>
+        <span class="monitor-gpu-chip"><b>${T('功耗')}</b>${fmtNum(g.power, 1)}W</span>
       </div>`;
-    const title = count > 1 ? `GPU (共 ${count} 张卡, 展示第 1 张) · ${gpuName}` : `GPU · ${gpuName}`;
+    const title = count > 1 ? T('GPU (共 {0} 张卡, 展示第 1 张) · {1}', count, gpuName) : `GPU · ${gpuName}`;
     sections.push(`<div class="monitor-card wide monitor-gpu-card"><h4>${title}</h4>${chartHtml}${nowHtml}</div>`);
   } else {
-    sections.push(`<div class="monitor-card wide monitor-gpu-card"><h4>GPU</h4><div class="monitor-na">未检测到 GPU 监控（需要 NVIDIA GPU + nvidia-smi）</div></div>`);
+    sections.push(`<div class="monitor-card wide monitor-gpu-card"><h4>GPU</h4><div class="monitor-na">${T('未检测到 GPU 监控（需要 NVIDIA GPU + nvidia-smi）')}</div></div>`);
   }
 
   // ---- CPU (负载 + 使用率) ----
@@ -3728,8 +3827,8 @@ function renderMonitorCards(res, grid) {
     let loadHtml = '';
     if (load) {
       const l = (v) => (v === null || v === undefined ? '-' : Number(v).toFixed(2));
-      loadHtml = `<div class="monitor-metric"><span class="k">负载 (1 / 5 / 15 分钟)</span><span class="v">${l(load.load1)} / ${l(load.load5)} / ${l(load.load15)}</span></div>`;
-      if (load.up) loadHtml += `<div class="monitor-metric"><span class="k">运行时长</span><span class="v">${escapeHtml(load.up)}</span></div>`;
+      loadHtml = `<div class="monitor-metric"><span class="k">${T('负载 (1 / 5 / 15 分钟)')}</span><span class="v">${l(load.load1)} / ${l(load.load5)} / ${l(load.load15)}</span></div>`;
+      if (load.up) loadHtml += `<div class="monitor-metric"><span class="k">${T('运行时长')}</span><span class="v">${escapeHtml(load.up)}</span></div>`;
     } else if (errors.load) {
       loadHtml = errorNote('load');
     }
@@ -3739,8 +3838,8 @@ function renderMonitorCards(res, grid) {
       const idle = cpu.idle;
       const displayPct = busy !== null ? busy : idle !== null ? (100 - idle) : null;
       cpuHtml = `
-        <div class="monitor-metric"><span class="k">CPU 使用率</span><span class="v">${displayPct !== null ? displayPct.toFixed(1) + '%' : '-'}</span></div>
-        <div class="monitor-metric"><span class="k">用户 / 系统 / 空闲</span><span class="v">${cpu.user !== null ? cpu.user.toFixed(1) + '%' : '-'} / ${cpu.system !== null ? cpu.system.toFixed(1) + '%' : '-'} / ${idle !== null ? idle.toFixed(1) + '%' : '-'}</span></div>
+        <div class="monitor-metric"><span class="k">${T('CPU 使用率')}</span><span class="v">${displayPct !== null ? displayPct.toFixed(1) + '%' : '-'}</span></div>
+        <div class="monitor-metric"><span class="k">${T('用户 / 系统 / 空闲')}</span><span class="v">${cpu.user !== null ? cpu.user.toFixed(1) + '%' : '-'} / ${cpu.system !== null ? cpu.system.toFixed(1) + '%' : '-'} / ${idle !== null ? idle.toFixed(1) + '%' : '-'}</span></div>
         <div class="monitor-bar${pctBarClass(displayPct)}"><i style="width:${displayPct !== null ? Math.min(100, Math.max(0, displayPct)) : 0}%"></i></div>`;
     } else if (errors.cpu) {
       cpuHtml = errorNote('cpu');
@@ -3757,17 +3856,17 @@ function renderMonitorCards(res, grid) {
       if (mem.swapTotalMB !== null) {
         const swapPct = mem.swapTotalMB > 0 ? Math.min(100, Math.max(0, (mem.swapUsedMB / mem.swapTotalMB) * 100)) : 0;
         swapHtml = `
-          <div class="monitor-metric"><span class="k">交换分区</span><span class="v">${formatGB(mem.swapUsedMB)} / ${formatGB(mem.swapTotalMB)}</span></div>
+          <div class="monitor-metric"><span class="k">${T('交换分区')}</span><span class="v">${formatGB(mem.swapUsedMB)} / ${formatGB(mem.swapTotalMB)}</span></div>
           <div class="monitor-bar${pctBarClass(swapPct)}"><i style="width:${swapPct}%"></i></div>`;
       }
-      sections.push(`<div class="monitor-card"><h4>内存</h4>
-        <div class="monitor-metric"><span class="k">已用 / 总量</span><span class="v">${formatGB(mem.usedMB)} / ${formatGB(mem.totalMB)}</span></div>
-        <div class="monitor-metric"><span class="k">可用</span><span class="v">${formatGB(mem.freeMB)}</span></div>
+      sections.push(`<div class="monitor-card"><h4>${T('内存')}</h4>
+        <div class="monitor-metric"><span class="k">${T('已用 / 总量')}</span><span class="v">${formatGB(mem.usedMB)} / ${formatGB(mem.totalMB)}</span></div>
+        <div class="monitor-metric"><span class="k">${T('可用')}</span><span class="v">${formatGB(mem.freeMB)}</span></div>
         <div class="monitor-bar${pctBarClass(usedPct)}"><i style="width:${usedPct !== null ? usedPct : 0}%"></i></div>
         ${swapHtml}
       </div>`);
     } else {
-      sections.push(`<div class="monitor-card"><h4>内存</h4>${errorNote('memory')}</div>`);
+      sections.push(`<div class="monitor-card"><h4>${T('内存')}</h4>${errorNote('memory')}</div>`);
     }
   }
 
@@ -3786,7 +3885,7 @@ function renderMonitorCards(res, grid) {
           <span class="monitor-disk-bar${pctBarClass(d.usedPct)}"><i style="width:${d.usedPct !== null ? Math.min(100, Math.max(0, d.usedPct)) : 0}%"></i></span>
         </div>`).join('')
       : errorNote('df');
-    sections.push(`<div class="monitor-card wide"><h4>磁盘</h4>${diskHtml}</div>`);
+    sections.push(`<div class="monitor-card wide"><h4>${T('磁盘')}</h4>${diskHtml}</div>`);
   }
 
   // ---- 汇总错误 (命令级失败提示, 不阻塞面板) ----
@@ -3797,7 +3896,7 @@ function renderMonitorCards(res, grid) {
   const errorEl = $('#monitorError');
   if (errorEl) {
     if (errText) {
-      errorEl.textContent = '部分指标采集失败: ' + errText;
+      errorEl.textContent = T('部分指标采集失败: ') + errText;
       errorEl.style.display = 'block';
     } else {
       errorEl.style.display = 'none';
@@ -3834,10 +3933,10 @@ function handleConnect() {
   const username = $('#fUser').value.trim();
   const method = getCurrentAuthMethod();
 
-  if (!host) { toast('请输入主机地址', 'error'); $('#fHost').focus(); return; }
-  if (!username) { toast('请输入用户名', 'error'); $('#fUser').focus(); return; }
-  if (method === 'password' && !$('#fPassword').value) { toast('请输入密码', 'error'); $('#fPassword').focus(); return; }
-  if (method === 'privateKey' && !$('#fKeyPath').value) { toast('请选择私钥文件', 'error'); return; }
+  if (!host) { toast(T('请输入主机地址'), 'error'); $('#fHost').focus(); return; }
+  if (!username) { toast(T('请输入用户名'), 'error'); $('#fUser').focus(); return; }
+  if (method === 'password' && !$('#fPassword').value) { toast(T('请输入密码'), 'error'); $('#fPassword').focus(); return; }
+  if (method === 'privateKey' && !$('#fKeyPath').value) { toast(T('请选择私钥文件'), 'error'); return; }
 
   const conn = {
     id: 'c_' + Date.now().toString(36),
@@ -3883,6 +3982,25 @@ async function init() {
   $('#btnCloseModal').addEventListener('click', closeModal);
   $('#btnCancel').addEventListener('click', closeModal);
   $('#btnConnect').addEventListener('click', handleConnect);
+
+  // 设置面板 (版本 / 更新检查 / 语言)
+  $('#btnSettings').addEventListener('click', toggleSettingsPanel);
+  $('#settingsClose').addEventListener('click', closeSettingsPanel);
+  $('#settingsCheckUpdateBtn').addEventListener('click', checkUpdate);
+  $('#settingsUpdateLink').addEventListener('click', (e) => {
+    const url = e.currentTarget.dataset.url || '';
+    if (url && window.nimbus && window.nimbus.openExternal) window.nimbus.openExternal(url).catch(() => {});
+  });
+  $('#settingsLangSelect').addEventListener('change', (e) => {
+    if (i18n) i18n.setLang(e.target.value);
+  });
+  // 点击面板外部关闭设置浮层
+  document.addEventListener('click', (e) => {
+    const panel = $('#settingsPanel');
+    if (!panel || panel.style.display !== 'flex') return;
+    if (e.target.closest('#settingsPanel') || e.target.closest('#btnSettings')) return;
+    closeSettingsPanel();
+  });
 
   // Roadmap ④: 命令收藏 (标签栏按钮 + 浮层面板)
   $('#btnFav').addEventListener('click', toggleFavPanel);
@@ -3955,27 +4073,27 @@ async function init() {
   // SFTP 面板工具栏 (操作目标 = 当前展示会话)
   $('#sftpBack').addEventListener('click', () => {
     const s = currentSftpSession();
-    if (s) goBack(s); else toast('请先连接会话', 'info');
+    if (s) goBack(s); else toast(T('请先连接会话'), 'info');
   });
   $('#sftpRefreshBtn').addEventListener('click', () => {
     const s = currentSftpSession();
-    if (s) refreshDir(s); else toast('请先连接会话', 'info');
+    if (s) refreshDir(s); else toast(T('请先连接会话'), 'info');
   });
   $('#sftpUploadBtn').addEventListener('click', () => {
     const s = currentSftpSession();
-    if (s) triggerUpload(s); else toast('请先连接会话', 'info');
+    if (s) triggerUpload(s); else toast(T('请先连接会话'), 'info');
   });
   $('#sftpMkdirBtn').addEventListener('click', () => {
     const s = currentSftpSession();
-    if (s) mkdirPrompt(s); else toast('请先连接会话', 'info');
+    if (s) mkdirPrompt(s); else toast(T('请先连接会话'), 'info');
   });
   $('#sftpPathInput').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     const s = currentSftpSession();
-    if (!s) { toast('请先连接会话', 'info'); return; }
+    if (!s) { toast(T('请先连接会话'), 'info'); return; }
     const p = normalizeRemotePath(e.target.value);
     if (p === null) {
-      toast('路径包含非法段 (..)', 'error');
+      toast(T('路径包含非法段 (..)'), 'error');
       return;
     }
     e.target.value = p;
@@ -4169,6 +4287,11 @@ async function init() {
         closeFavPanel();
         return;
       }
+      // 设置面板
+      if ($('#settingsPanel').style.display === 'flex') {
+        closeSettingsPanel();
+        return;
+      }
       // 操作日志面板
       if ($('#auditOverlay').style.display === 'flex') {
         closeAuditPanel();
@@ -4201,7 +4324,11 @@ async function init() {
   // 初始: SFTP 面板显示占位
   showSftpFor(null);
 
-  toast('欢迎使用 FgmSSH', 'info');
+  // 应用已保存语言: 翻译静态界面 + 同步设置面板 (版本/语言下拉)
+  if (i18n) i18n.applyDom(document);
+  updateSettingsPanel();
+
+  toast(T('欢迎使用 FgmSSH'), 'info');
 }
 
 window.addEventListener('DOMContentLoaded', init);
