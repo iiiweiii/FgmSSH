@@ -232,6 +232,9 @@ const nimbus = {
   // 应用更新: 校验 -> 自替换 -> 自动重启 (本进程随后退出)
   updateApply: (path) => guardedInvoke('update_apply', { path }),
 
+  // ---- 系统托盘 ----
+  // 托盘菜单文案在启动时按 settings.json 的 lang 生成; 切换语言后写入设置, 重启生效。
+
   // ---- 主机密钥指纹 (TOFU) ----
   hostKeyAccept: (sessionId, override) => guardedInvoke('hostkey_accept', { sessionId, override }),
   hostKeyReject: (sessionId) => guardedInvoke('hostkey_reject', { sessionId }),

@@ -3242,6 +3242,28 @@ function initPreviewEvents() {
 // 版本号由构建期注入 (vite define: __APP_VERSION__); 更新检查复用后端 update_check。
 let settingsUpdateState = null; // 最近一次检查结果 { ok, hasUpdate, current, latest, url, assets }
 let settingsUpdating = false;   // 下载/安装进行中 (防重入)
+let appSettings = {};           // settings.json 缓存 (minimizeToTray / lang 等)
+
+// 读取全局设置 (settings.json) 并同步到设置面板
+async function loadAppSettings() {
+  try {
+    const s = await window.nimbus.settingsLoad();
+    appSettings = (s && typeof s === 'object') ? s : {};
+  } catch (e) {
+    appSettings = {};
+  }
+  const cb = $('#settingsMinimizeTray');
+  // 缺省开启: 关闭窗口最小化到托盘
+  if (cb) cb.checked = appSettings.minimizeToTray !== false;
+}
+
+// 写回全局设置 (合并当前缓存)
+async function saveAppSettings(patch) {
+  appSettings = Object.assign({}, appSettings, patch || {});
+  try {
+    await window.nimbus.settingsSave(appSettings);
+  } catch (e) { /* 保存失败不阻塞 UI */ }
+}
 
 // 挑选用于应用内更新的附件: 仅接受便携版 exe (可安全自替换)。
 // 不接受 NSIS 安装包 —— 把安装包覆盖到程序本体上是错误行为, 此时提示用户走「打开下载页」。
@@ -4159,7 +4181,14 @@ async function init() {
     if (url && window.nimbus && window.nimbus.openExternal) window.nimbus.openExternal(url).catch(() => {});
   });
   $('#settingsLangSelect').addEventListener('change', (e) => {
-    if (i18n) i18n.setLang(e.target.value);
+    const lang = e.target.value;
+    if (i18n) i18n.setLang(lang);
+    // 写入设置: 托盘菜单文案按此在下次启动时生成
+    saveAppSettings({ lang });
+  });
+  // 关闭窗口时最小化到托盘 (后端 on_window_event 读取 settings.json)
+  $('#settingsMinimizeTray').addEventListener('change', (e) => {
+    saveAppSettings({ minimizeToTray: !!e.target.checked });
   });
   // 点击面板外部关闭设置浮层
   document.addEventListener('click', (e) => {
@@ -4496,6 +4525,9 @@ async function init() {
   // 应用已保存语言: 翻译静态界面 + 同步设置面板 (版本/语言下拉)
   if (i18n) i18n.applyDom(document);
   updateSettingsPanel();
+  // 全局设置 (settings.json): 最小化到托盘开关 + 语言 (托盘菜单文案在下次启动生成)
+  await loadAppSettings();
+  if (i18n && appSettings.lang !== i18n.lang()) await saveAppSettings({ lang: i18n.lang() });
 
   toast(T('欢迎使用 FgmSSH'), 'info');
 }

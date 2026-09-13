@@ -99,6 +99,7 @@
     '适应窗口': 'Fit to window',
     '主题': 'Theme',
     '语言': 'Language',
+    '关闭窗口时最小化到托盘': 'Minimize to tray on close',
     '设置': 'Settings',
     '版本': 'Version',
     '当前版本': 'Current version',

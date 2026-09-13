@@ -7,7 +7,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)]()
 [![Build & Release](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml/badge.svg)](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml)
 
-> **当前版本：v1.2.10**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
+> **当前版本：v1.2.11**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
 
 ## 特性
 
@@ -25,6 +25,7 @@
 - **应用内更新**：启动后自动检查，发现新版本可在软件内一键下载安装并自动重启（无需手动下载安装包）
 - **中英双语**：全界面文案可切换，静态界面与运行时提示一并生效
 - **连接效率**：连接置顶、`Ctrl+K` 快速搜索连接、`Ctrl+Shift+F` 命令收藏
+- **系统托盘**：关闭窗口最小化到托盘（可在设置中关闭），托盘左键显示窗口、右键菜单（显示主窗口 / 退出）
 - **浅色 / 深色主题**：全局主题切换
 
 ## 安全特性
@@ -66,8 +67,13 @@ npm run tauri build    # 生产构建（产物在 src-tauri/target/release/bundl
 
 ## 已知限制
 
-- **系统托盘**：尚未实现（计划中）
 - **端口转发**：目前仅支持本地转发（本地端口 → 远端服务），暂无 SOCKS5 动态转发
+
+## v1.2.11 更新内容
+
+- **系统托盘**：关闭窗口改为最小化到托盘（不再直接退出）；托盘图标左键点击显示并聚焦主窗口，右键菜单提供「显示主窗口 / 退出 FgmSSH」
+- 设置面板新增「关闭窗口时最小化到托盘」开关（默认开启；关闭后按原行为退出）
+- 托盘菜单文案跟随界面语言（中 / 英，按设置中的语言在启动时生成）
 
 ## v1.2.10 更新内容
 

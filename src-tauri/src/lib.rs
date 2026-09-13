@@ -19,6 +19,8 @@ mod update;
 
 use serde::Serialize;
 use tauri::http::{Response, StatusCode};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
@@ -261,11 +263,68 @@ fn http_ok(body: Vec<u8>, mime: &'static str) -> Response<Vec<u8>> {
 /// 修复: tauri 2.11 中 register_uri_scheme_protocol 是 Builder 的方法, handler 签名为
 /// `Fn(UriSchemeContext, http::Request<Vec<u8>>) -> http::Response<T>` (直接返回 Response,
 /// 不再包 Result); 原代码按旧版 beta API 写在 AppHandle 上, 无法编译。
+// ================= 系统托盘 (最小化到托盘) =================
+
+/// 托盘图标 id (语言切换时按 id 取回托盘重建菜单)
+const TRAY_ID: &str = "fgmssh-tray";
+
+/// 托盘菜单文案 (跟随设置里的界面语言, 默认中文)
+fn tray_labels(lang: &str) -> (&'static str, &'static str) {
+    if lang == "en" {
+        ("Show window", "Quit FgmSSH")
+    } else {
+        ("显示主窗口", "退出 FgmSSH")
+    }
+}
+
+/// 按语言构建托盘菜单 (显示主窗口 / 退出)
+fn build_tray_menu(app: &AppHandle, lang: &str) -> tauri::Result<Menu<tauri::Wry>> {
+    let (show_text, quit_text) = tray_labels(lang);
+    let show_item = MenuItem::with_id(app, "show", show_text, true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", quit_text, true, None::<&str>)?;
+    Menu::with_items(app, &[&show_item, &quit_item])
+}
+
+/// 当前界面语言 (settings.json 的 lang 字段; 缺省中文)
+fn current_lang() -> String {
+    store::load_settings()
+        .get("lang")
+        .and_then(|v| v.as_str())
+        .unwrap_or("zh")
+        .to_string()
+}
+
+/// 关闭窗口时是否最小化到托盘 (settings.json: minimizeToTray, 默认 true)
+fn minimize_to_tray_enabled() -> bool {
+    store::load_settings()
+        .get("minimizeToTray")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
+}
+
+/// 显示并聚焦主窗口 (托盘点击 / 菜单「显示主窗口」共用)
+fn show_main_window(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        // 关闭窗口 -> 最小化到托盘 (设置里可关闭该行为, 关闭时按正常退出处理)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && minimize_to_tray_enabled() {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         // nimbus-preview: 图片预览临时文件 (nimbus- 前缀, 非 nimbus-doc-)
         .register_uri_scheme_protocol("nimbus-preview", |_ctx, req| {
             let url = req.uri().to_string();
@@ -298,6 +357,39 @@ pub fn run() {
             // preview/doc: 设置 preview_tmp 目录 + 启动清理过期文件 + 清理 orphan 注册。
             let _ = preview_doc::init(app.handle());
             app.manage(state);
+
+            // ---- 系统托盘: 左键点击显示主窗口, 右键菜单 (显示主窗口 / 退出) ----
+            // 窗口关闭默认隐藏到托盘 (见 on_window_event); 菜单文案跟随 settings.lang。
+            // 说明: 托盘为尽力而为 —— 创建失败(极少数环境)不影响应用正常启动。
+            {
+                let handle = app.handle().clone();
+                let lang = current_lang();
+                if let Ok(menu) = build_tray_menu(&handle, &lang) {
+                    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
+                        .tooltip("FgmSSH")
+                        .menu(&menu)
+                        .show_menu_on_left_click(false)
+                        .on_menu_event(|app, event| match event.id.as_ref() {
+                            "show" => show_main_window(app),
+                            "quit" => app.exit(0),
+                            _ => {}
+                        })
+                        .on_tray_icon_event(|tray, event| {
+                            if let TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            } = event
+                            {
+                                show_main_window(tray.app_handle());
+                            }
+                        });
+                    if let Some(icon) = app.default_window_icon().cloned() {
+                        builder = builder.icon(icon);
+                    }
+                    let _ = builder.build(app);
+                }
+            }
 
             // 启动期静默检查更新 (延迟 5s, 不阻塞启动): 有新版本则广播 update:check,
             // 前端据此显示顶栏徽标 / 填充设置面板状态。失败静默 (离线/超时/无 release)。
