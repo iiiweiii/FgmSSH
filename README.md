@@ -7,7 +7,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)]()
 [![Build & Release](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml/badge.svg)](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml)
 
-> **当前版本：v1.2.11**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
+> **当前版本：v1.2.12**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
 
 ## 特性
 
@@ -26,7 +26,8 @@
 - **中英双语**：全界面文案可切换，静态界面与运行时提示一并生效
 - **连接效率**：连接置顶、`Ctrl+K` 快速搜索连接、`Ctrl+Shift+F` 命令收藏
 - **系统托盘**：关闭窗口最小化到托盘（可在设置中关闭），托盘左键显示窗口、右键菜单（显示主窗口 / 退出）
-- **浅色 / 深色主题**：全局主题切换
+- **浅色 / 深色主题**：全局主题切换（顶栏三态图标：浅色 / 深色 / 跟随系统）
+- **终端字体**：内置经典等宽字体一键切换（Cascadia Code / JetBrains Mono / Fira Code / Consolas / Source Code Pro / IBM Plex Mono / Hack / Ubuntu Mono / 系统等宽），带逐级回退
 
 ## 安全特性
 
@@ -68,6 +69,12 @@ npm run tauri build    # 生产构建（产物在 src-tauri/target/release/bundl
 ## 已知限制
 
 - **端口转发**：目前仅支持本地转发（本地端口 → 远端服务），暂无 SOCKS5 动态转发
+
+## v1.2.12 更新内容
+
+- **终端字体切换**：顶栏主题按钮旁新增字体下拉，收录 9 档经典等宽字体（Cascadia Code、JetBrains Mono、Fira Code、Consolas、Source Code Pro、IBM Plex Mono、Hack、Ubuntu Mono、系统等宽）；选择结果本地持久化，切换后自动重新适配窗口尺寸并同步远端 PTY
+- **主题按钮图标重做**：由文字符号 ◐ 换成内联 SVG 三态图标（跟随系统=半填充圆 / 浅色=太阳 / 深色=月亮），随模式自动切换
+- 主题按钮的悬浮提示与文案接入 i18n（中英）
 
 ## v1.2.11 更新内容
 

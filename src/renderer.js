@@ -54,6 +54,72 @@ const i18n = (typeof window !== 'undefined' && window.I18n)
   : null;
 
 function T(text, ...args) { return i18n ? i18n.t(text, ...args) : String(text); }
+// 供 UMD 模块 (theme.js 等) 复用翻译 (无 i18n 时原样返回)
+if (typeof window !== 'undefined') window.__t = T;
+
+// ============ 终端字体 (与顶栏主题按钮同区; 选择结果本地持久化) ============
+// 经典等宽字体 + 逐级回退: 未安装时自动退到下一档, 不会退化成比例字体。
+const TERM_FONTS = [
+  { id: 'cascadia', label: 'Cascadia Code', stack: '"Cascadia Code", "Cascadia Mono", Consolas, monospace' },
+  { id: 'jetbrains', label: 'JetBrains Mono', stack: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' },
+  { id: 'fira', label: 'Fira Code', stack: '"Fira Code", "Cascadia Code", Consolas, monospace' },
+  { id: 'consolas', label: 'Consolas', stack: 'Consolas, "Courier New", monospace' },
+  { id: 'sourcecode', label: 'Source Code Pro', stack: '"Source Code Pro", Consolas, monospace' },
+  { id: 'plex', label: 'IBM Plex Mono', stack: '"IBM Plex Mono", Consolas, monospace' },
+  { id: 'hack', label: 'Hack', stack: 'Hack, Consolas, monospace' },
+  { id: 'ubuntu', label: 'Ubuntu Mono', stack: '"Ubuntu Mono", "DejaVu Sans Mono", Consolas, monospace' },
+  { id: 'system', label: '', stack: 'ui-monospace, "SFMono-Regular", Consolas, "Courier New", monospace' },
+];
+const TERM_FONT_STORAGE = 'fgmssh.termFont';
+
+function currentFontId() {
+  try {
+    const saved = localStorage.getItem(TERM_FONT_STORAGE);
+    if (saved && TERM_FONTS.some((f) => f.id === saved)) return saved;
+  } catch (e) { /* localStorage 不可用走默认 */ }
+  return 'cascadia';
+}
+
+function currentFontStack() {
+  const f = TERM_FONTS.find((x) => x.id === currentFontId());
+  return (f && f.stack) || TERM_FONTS[0].stack;
+}
+
+// 字体名 (system 档位为可翻译的「系统等宽」)
+function fontLabel(f) { return f.label || T('系统等宽'); }
+
+// 初始化字体下拉 (填充选项 + 绑定切换 + 语言切换后重绘标签)
+function initFontSelect() {
+  const sel = $('#fontSelect');
+  if (!sel) return;
+  const prev = sel.value || currentFontId();
+  sel.innerHTML = TERM_FONTS
+    .map((f) => `<option value="${f.id}">${escapeHtml(fontLabel(f))}</option>`)
+    .join('');
+  sel.value = currentFontId();
+  sel.title = T('终端字体');
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', () => {
+      const f = TERM_FONTS.find((x) => x.id === sel.value) || TERM_FONTS[0];
+      try { localStorage.setItem(TERM_FONT_STORAGE, f.id); } catch (e) { /* 忽略 */ }
+      applyTerminalFont(f.stack);
+    });
+  }
+  void prev;
+}
+
+// 应用字体到所有会话终端: 字体度量变化会改变 cols/rows, 需重新 fit
+// (fit 触发 term.onResize -> reportTerminalSize 把新尺寸同步给远端 PTY)
+function applyTerminalFont(stack) {
+  const seen = new Set();
+  sessions.forEach((s) => {
+    if (!s || !s.term || seen.has(s.term)) return;
+    seen.add(s.term);
+    try { s.term.options.fontFamily = stack; } catch (e) { /* 单实例失败不影响其余 */ }
+    if (s.hostEl && document.contains(s.hostEl)) syncScreenToContent(s);
+  });
+}
 
 // 语言切换后重渲染动态内容 (列表/面板/状态栏), 使其按新语言重新取值
 function applyLanguageChange() {
@@ -65,6 +131,7 @@ function applyLanguageChange() {
   try { if ($('#tunnelOverlay').style.display === 'flex') refreshTunnelList(); } catch (e) {}
   try { if ($('#monitorOverlay').style.display === 'flex') refreshMonitor(true); } catch (e) {}
   try { updateSettingsPanel(); } catch (e) {}
+  try { initFontSelect(); } catch (e) {}
 }
 
 // ============ 工具函数 ============
@@ -524,7 +591,7 @@ function currentXtermTheme() {
 
 function createTerminal() {
   const term = new window.Terminal({
-    fontFamily: '"Cascadia Code", "Consolas", "JetBrains Mono", monospace',
+    fontFamily: currentFontStack(),
     fontSize: 13,
     lineHeight: 1.25,
     cursorBlink: true,
@@ -4521,6 +4588,9 @@ async function init() {
 
   // 初始: SFTP 面板显示占位
   showSftpFor(null);
+
+  // 终端字体下拉 (顶栏主题按钮区)
+  initFontSelect();
 
   // 应用已保存语言: 翻译静态界面 + 同步设置面板 (版本/语言下拉)
   if (i18n) i18n.applyDom(document);

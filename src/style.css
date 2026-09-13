@@ -579,11 +579,31 @@ body.is-resizing * { cursor: col-resize !important; }
   font-weight: 500;
   color: var(--text-dim);
 }
-.btn-theme .theme-state-icon { font-size: 12px; line-height: 1; }
+/* 主题三态图标: 仅显示与当前模式对应的那一个 (data-theme 由 src/theme.js 更新) */
+.btn-theme .theme-icon { display: none; flex-shrink: 0; }
+.btn-theme[data-theme="light"] .theme-icon-light { display: block; color: var(--yellow); }
+.btn-theme[data-theme="dark"] .theme-icon-dark { display: block; color: var(--accent); }
+.btn-theme[data-theme="auto"] .theme-icon-auto { display: block; color: var(--text-dim); }
 .btn-theme:hover { background: var(--bg-hover); color: var(--text); }
-.btn-theme[data-theme="light"] .theme-state-icon { color: var(--yellow); }
-.btn-theme[data-theme="dark"] .theme-state-icon { color: var(--accent); }
-.btn-theme[data-theme="auto"] .theme-state-icon { color: var(--text-dim); }
+
+/* 终端字体选择 (与主题按钮同区; 紧凑下拉) */
+.toolbar-font {
+  height: 26px;
+  max-width: 152px;
+  padding: 0 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  outline: none;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.toolbar-font:hover { color: var(--text); border-color: var(--border); }
+.toolbar-font:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.toolbar-font option { background: var(--bg-elevated); color: var(--text); }
 
 /* 空状态 */
 .empty-state {
