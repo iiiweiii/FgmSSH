@@ -570,27 +570,30 @@ body.is-resizing * { cursor: col-resize !important; }
 
 /* 主题切换按钮 (Roadmap P2): 文本「主题」+ 当前模式图标 (☀ 浅色 / ☾ 深色 / ◐ 自动),
    点击循环切换; data-theme 属性由 src/theme.js 更新, 供样式/测试断言 */
-.btn-theme {
-  width: auto;
-  min-width: 62px;
-  padding: 0 9px;
+/* ============ 外观区 (顶栏: 主题 + 终端字体, 设置行样式) ============ */
+.toolbar-appearance {
+  display: flex;
+  align-items: center;
   gap: 5px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-dim);
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.toolbar-appearance .theme-state-label,
+.toolbar-appearance .toolbar-field-label {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
 }
 /* 主题三态图标: 仅显示与当前模式对应的那一个 (data-theme 由 src/theme.js 更新) */
-.btn-theme .theme-icon { display: none; flex-shrink: 0; }
-.btn-theme[data-theme="light"] .theme-icon-light { display: block; color: var(--yellow); }
-.btn-theme[data-theme="dark"] .theme-icon-dark { display: block; color: var(--accent); }
-.btn-theme[data-theme="auto"] .theme-icon-auto { display: block; color: var(--text-dim); }
-.btn-theme:hover { background: var(--bg-hover); color: var(--text); }
+.toolbar-appearance .theme-icon { display: none; flex-shrink: 0; }
+#btnTheme[data-theme="light"] .theme-icon-light { display: block; color: var(--yellow); }
+#btnTheme[data-theme="dark"] .theme-icon-dark { display: block; color: var(--accent); }
+#btnTheme[data-theme="auto"] .theme-icon-auto { display: block; color: var(--text-dim); }
 
-/* 终端字体选择 (与主题按钮同区; 紧凑下拉) */
-.toolbar-font {
+/* 外观区下拉 (紧凑) */
+.toolbar-select {
   height: 26px;
-  max-width: 152px;
-  padding: 0 6px;
+  padding: 0 4px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-soft);
   border-radius: 7px;
@@ -601,9 +604,11 @@ body.is-resizing * { cursor: col-resize !important; }
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
-.toolbar-font:hover { color: var(--text); border-color: var(--border); }
-.toolbar-font:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.toolbar-font option { background: var(--bg-elevated); color: var(--text); }
+.toolbar-select:hover { color: var(--text); border-color: var(--border); }
+.toolbar-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.toolbar-select option { background: var(--bg-elevated); color: var(--text); }
+#themeSelect { width: 84px; }
+.toolbar-select-font { width: 142px; }
 
 /* 空状态 */
 .empty-state {

@@ -88,6 +88,25 @@ function currentFontStack() {
 // 字体名 (system 档位为可翻译的「系统等宽」)
 function fontLabel(f) { return f.label || T('系统等宽'); }
 
+// 初始化主题下拉 (外观区): 值来自主题控制器偏好, 切换即持久化并应用
+function initThemeSelect() {
+  const sel = $('#themeSelect');
+  if (!sel || !themeController) return;
+  sel.value = themeController.getPreference();
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', () => {
+      if (themeController) themeController.setPreference(sel.value);
+    });
+  }
+}
+
+// 主题变化 (含跟随系统联动) 时同步下拉值
+function syncThemeSelect() {
+  const sel = $('#themeSelect');
+  if (sel && themeController) sel.value = themeController.getPreference();
+}
+
 // 初始化字体下拉 (填充选项 + 绑定切换 + 语言切换后重绘标签)
 function initFontSelect() {
   const sel = $('#fontSelect');
@@ -251,6 +270,8 @@ const themeController = (typeof window !== 'undefined' && window.NimbusTheme)
       },
       button: document.getElementById('btnTheme'),
       onThemeChange: () => {
+        // 顶栏主题下拉值与实际偏好保持同步 (含「跟随系统」时的联动)
+        try { syncThemeSelect(); } catch (e) { /* init 阶段下拉可能尚未就绪 */ }
         // 健康监控面板打开时按新主题重绘 GPU 折线图 (配色由 JS 注入, 非 CSS 变量)。
         // 自含 try/catch: 顶部 init 阶段 monitorPanelSessionId 可能尚未初始化 (TDZ)。
         try {
@@ -4416,13 +4437,13 @@ async function init() {
   // 全屏终端 (统一走 toggleFullscreen: rAF 等布局稳定 -> fitSafe, 无魔法延迟)
   $('#btnFullscreen').addEventListener('click', toggleFullscreen);
 
-  // 主题切换按钮 (Roadmap P2): 点击在 light -> dark -> auto 间循环
-  // (themeController 在文件顶部已 init 应用持久化偏好; 此处仅绑定交互)
+  // 外观区 (顶栏): 主题下拉 + 终端字体下拉
+  // #btnTheme 仅作为主题控制器写 data-theme 的容器 (图标三态由 CSS 显示), 交互交给下拉
   if (themeController) {
-    $('#btnTheme').addEventListener('click', () => themeController.switchTheme());
+    initThemeSelect();
   } else {
-    const btn = $('#btnTheme');
-    if (btn) btn.style.display = 'none';
+    const box = $('#btnTheme');
+    if (box) box.style.display = 'none';
   }
 
   // 可调节布局: 恢复侧边栏宽度, 绑定宽度/列宽拖拽

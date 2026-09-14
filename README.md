@@ -7,7 +7,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)]()
 [![Build & Release](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml/badge.svg)](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml)
 
-> **当前版本：v1.2.12**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
+> **当前版本：v1.2.13**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
 
 ## 特性
 
@@ -70,10 +70,15 @@ npm run tauri build    # 生产构建（产物在 src-tauri/target/release/bundl
 
 - **端口转发**：目前仅支持本地转发（本地端口 → 远端服务），暂无 SOCKS5 动态转发
 
+## v1.2.13 更新内容
+
+- **外观区合并**：顶栏把「主题」与「终端字体」放在同一区域，均为带标签的紧凑下拉（主题：跟随系统 / 浅色 / 深色；字体：9 档经典等宽），并保留随模式变化的三态图标
+- 主题相关提示文案随实际控件调整（不再提示"点击切换"），并接入中英双语
+
 ## v1.2.12 更新内容
 
-- **终端字体切换**：顶栏主题按钮旁新增字体下拉，收录 9 档经典等宽字体（Cascadia Code、JetBrains Mono、Fira Code、Consolas、Source Code Pro、IBM Plex Mono、Hack、Ubuntu Mono、系统等宽）；选择结果本地持久化，切换后自动重新适配窗口尺寸并同步远端 PTY
-- **主题按钮图标重做**：由文字符号 ◐ 换成内联 SVG 三态图标（跟随系统=半填充圆 / 浅色=太阳 / 深色=月亮），随模式自动切换
+- **终端字体切换**：新增 9 档经典等宽字体（Cascadia Code、JetBrains Mono、Fira Code、Consolas、Source Code Pro、IBM Plex Mono、Hack、Ubuntu Mono、系统等宽），每档带逐级回退；选择结果本地持久化，切换后自动重新适配窗口尺寸并同步远端 PTY
+- **主题图标重做**：由文字符号 ◐ 换成内联 SVG 三态图标（跟随系统=半填充圆 / 浅色=太阳 / 深色=月亮）
 - 主题按钮的悬浮提示与文案接入 i18n（中英）
 
 ## v1.2.11 更新内容

@@ -173,7 +173,7 @@
         ? window.__t
         : (s) => s;
       button.dataset.theme = pref;
-      button.title = tr('主题模式: {0}（当前 {1}），点击切换', prefLabel, resolvedLabel);
+      button.title = tr('主题模式: {0}（当前 {1}）', prefLabel, resolvedLabel);
       const iconEl = button.querySelector ? button.querySelector('.theme-state-icon') : null;
       const labelEl = button.querySelector ? button.querySelector('.theme-state-label') : null;
       // 图标改用内联 SVG 三态 (CSS 按 data-theme 显示), 仅在旧标记存在时回退文本图标
