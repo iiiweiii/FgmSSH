@@ -7,7 +7,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)]()
 [![Build & Release](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml/badge.svg)](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml)
 
-> **当前版本：v1.2.13**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
+> **当前版本：v1.2.14**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
 
 ## 特性
 
@@ -69,6 +69,11 @@ npm run tauri build    # 生产构建（产物在 src-tauri/target/release/bundl
 ## 已知限制
 
 - **端口转发**：目前仅支持本地转发（本地端口 → 远端服务），暂无 SOCKS5 动态转发
+
+## v1.2.14 更新内容
+
+- **统一为「外观」入口**：顶栏只保留一个外观图标按钮（图标随主题模式变化），点击弹出浮层，内含「主题」与「终端字体」两行（设置面板同款样式），不再把两个下拉摊在顶栏上
+- 外观浮层与设置面板互斥（打开一个会收起另一个），支持点击外部 / Esc 关闭
 
 ## v1.2.13 更新内容
 

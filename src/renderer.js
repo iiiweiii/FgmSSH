@@ -88,7 +88,29 @@ function currentFontStack() {
 // 字体名 (system 档位为可翻译的「系统等宽」)
 function fontLabel(f) { return f.label || T('系统等宽'); }
 
-// 初始化主题下拉 (外观区): 值来自主题控制器偏好, 切换即持久化并应用
+// ============ 外观浮层 (顶栏外观按钮: 主题 + 终端字体) ============
+function openAppearancePanel() {
+  const panel = $('#appearancePanel');
+  if (!panel) return;
+  closeSettingsPanel();   // 与设置面板互斥
+  if (themeController) initThemeSelect();
+  initFontSelect();
+  panel.style.display = 'flex';
+}
+
+function closeAppearancePanel() {
+  const panel = $('#appearancePanel');
+  if (panel) panel.style.display = 'none';
+}
+
+function toggleAppearancePanel() {
+  const panel = $('#appearancePanel');
+  if (!panel) return;
+  if (panel.style.display === 'flex') closeAppearancePanel();
+  else openAppearancePanel();
+}
+
+// 初始化主题下拉 (外观浮层): 值来自主题控制器偏好, 切换即持久化并应用
 function initThemeSelect() {
   const sel = $('#themeSelect');
   if (!sel || !themeController) return;
@@ -3422,6 +3444,7 @@ async function startUpdateInstall() {
 function openSettingsPanel() {
   const panel = $('#settingsPanel');
   if (!panel) return;
+  closeAppearancePanel();   // 与外观浮层互斥
   updateSettingsPanel();
   panel.style.display = 'flex';
 }
@@ -4437,9 +4460,17 @@ async function init() {
   // 全屏终端 (统一走 toggleFullscreen: rAF 等布局稳定 -> fitSafe, 无魔法延迟)
   $('#btnFullscreen').addEventListener('click', toggleFullscreen);
 
-  // 外观区 (顶栏): 主题下拉 + 终端字体下拉
-  // #btnTheme 仅作为主题控制器写 data-theme 的容器 (图标三态由 CSS 显示), 交互交给下拉
+  // 外观浮层 (顶栏图标按钮): 单个按钮点开「主题 + 终端字体」两行
+  // #btnTheme 同时是主题控制器写 data-theme 的容器, 三态图标由 CSS 显示
   if (themeController) {
+    $('#btnTheme').addEventListener('click', toggleAppearancePanel);
+    $('#appearanceClose').addEventListener('click', closeAppearancePanel);
+    document.addEventListener('click', (e) => {
+      const panel = $('#appearancePanel');
+      if (!panel || panel.style.display !== 'flex') return;
+      if (e.target.closest('#appearancePanel') || e.target.closest('#btnTheme')) return;
+      closeAppearancePanel();
+    });
     initThemeSelect();
   } else {
     const box = $('#btnTheme');
@@ -4576,6 +4607,11 @@ async function init() {
       // 设置面板
       if ($('#settingsPanel').style.display === 'flex') {
         closeSettingsPanel();
+        return;
+      }
+      // 外观浮层
+      if ($('#appearancePanel').style.display === 'flex') {
+        closeAppearancePanel();
         return;
       }
       // 操作日志面板

@@ -570,45 +570,23 @@ body.is-resizing * { cursor: col-resize !important; }
 
 /* 主题切换按钮 (Roadmap P2): 文本「主题」+ 当前模式图标 (☀ 浅色 / ☾ 深色 / ◐ 自动),
    点击循环切换; data-theme 属性由 src/theme.js 更新, 供样式/测试断言 */
-/* ============ 外观区 (顶栏: 主题 + 终端字体, 设置行样式) ============ */
-.toolbar-appearance {
-  display: flex;
-  align-items: center;
+/* ============ 外观按钮 + 外观浮层 (主题 / 终端字体) ============ */
+.btn-theme {
+  width: auto;
+  min-width: 30px;
+  padding: 0 8px;
   gap: 5px;
-  padding: 0 4px;
-  flex-shrink: 0;
+  color: var(--text-dim);
 }
-.toolbar-appearance .theme-state-label,
-.toolbar-appearance .toolbar-field-label {
-  font-size: 11.5px;
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-/* 主题三态图标: 仅显示与当前模式对应的那一个 (data-theme 由 src/theme.js 更新) */
-.toolbar-appearance .theme-icon { display: none; flex-shrink: 0; }
+/* 三态主题图标: 仅显示与当前模式对应的那一个 (data-theme 由 src/theme.js 更新) */
+.btn-theme .theme-icon { display: none; flex-shrink: 0; }
 #btnTheme[data-theme="light"] .theme-icon-light { display: block; color: var(--yellow); }
 #btnTheme[data-theme="dark"] .theme-icon-dark { display: block; color: var(--accent); }
 #btnTheme[data-theme="auto"] .theme-icon-auto { display: block; color: var(--text-dim); }
+.btn-theme:hover { background: var(--bg-hover); color: var(--text); }
 
-/* 外观区下拉 (紧凑) */
-.toolbar-select {
-  height: 26px;
-  padding: 0 4px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-soft);
-  border-radius: 7px;
-  color: var(--text-dim);
-  font-size: 11.5px;
-  font-family: var(--font-ui);
-  outline: none;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
-}
-.toolbar-select:hover { color: var(--text); border-color: var(--border); }
-.toolbar-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.toolbar-select option { background: var(--bg-elevated); color: var(--text); }
-#themeSelect { width: 84px; }
-.toolbar-select-font { width: 142px; }
+/* 外观浮层: 复用设置面板样式, 只是窄一些 */
+.appearance-panel { width: 320px; }
 
 /* 空状态 */
 .empty-state {

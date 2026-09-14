@@ -98,6 +98,7 @@
     '适应宽度': 'Fit width',
     '适应窗口': 'Fit to window',
     '主题': 'Theme',
+    '外观': 'Appearance',
     '主题模式': 'Theme mode',
     '主题模式: {0}（当前 {1}）': 'Theme: {0} (currently {1})',
     '跟随系统': 'Follow system',
