@@ -14,9 +14,12 @@ fmgssh-tauri/
 ├── src/
 │   ├── main.js           # vite 入口: 挂 xterm/mammoth 全局 -> import bridge + renderer
 │   ├── nimbus-bridge.js  # ★ window.nimbus -> Tauri invoke/listen 桥接层
-│   ├── renderer.js       # 原样复用 Electron 版 (仅 pdfjs 导入路径适配)
-│   └── style.css / theme.js / health-parser.js / editor-highlight.js
-│       / file-filter.js / fav-commands.js / gpu-chart.js
+│   ├── renderer.js       # 界面逻辑主文件 (文档查看器已拆至 src/doc-viewer.js)
+│   ├── doc-viewer.js     # 内置文档查看器 (PDF/DOCX/文本编辑; 由 renderer 注入依赖装配)
+│   └── style.css         # 唯一样式表
+├── public/               # 7 个 UMD 纯逻辑模块 (经典 script 加载, 单一源, 勿在 src/ 下放副本)
+│   └── fav-commands.js / i18n.js / gpu-chart.js / theme.js
+│       / file-filter.js / editor-highlight.js / health-parser.js
 └── src-tauri/            # Rust 侧 (backend-core/backend-ext 交付)
 ```
 
@@ -53,8 +56,9 @@ npm run build          # -> dist/
 1. `index.html` 的 CSP meta 在 Electron 版基础上补齐 Tauri v2 IPC 所需源：
    `script-src 'self' blob:`、`connect-src 'self' ipc: http://ipc.localhost nimbus-preview: nimbus-doc: blob: data:`、
    `worker-src 'self' blob:`、`img-src 'self' nimbus-preview: blob: data:`（均无 `unsafe-eval`）。
-2. 5 个 UMD 纯逻辑模块（fav-commands / gpu-chart / theme / file-filter / editor-highlight）
-   以**经典 script** 顺序加载，挂 `window.FavCommands` 等全局（与 Electron 版一致）。
+2. 7 个 UMD 纯逻辑模块（fav-commands / i18n / gpu-chart / theme / file-filter /
+   editor-highlight / health-parser）以**经典 script** 顺序加载（源码唯一位置为 `public/`），
+   挂 `window.FavCommands` 等全局（与 Electron 版一致）。
 3. `src/main.js`（module script）：
    - `import '@xterm/xterm/css/xterm.css'`（xterm 定位规则必须存在）
    - 挂 `window.Terminal / FitAddon / WebLinksAddon / mammoth`

@@ -30,6 +30,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # UMD 模块单一源校验: index.html 以经典 script 从 public/ 加载 7 个纯逻辑模块
+      # (fav-commands / i18n / gpu-chart / theme / file-filter / editor-highlight / health-parser),
+      # src/ 下不得再存同名副本。历史上 src/theme.js 与 public/theme.js 曾分叉
+      # (src 侧为 i18n 化新版, public 侧仍是硬编码旧版), 导致线上加载旧版、i18n 静默退化。
+      # 新增或修改这些模块请直接改 public/。
+      - name: Guard UMD modules single source
+        shell: pwsh
+        run: |
+          $names = @('fav-commands.js','gpu-chart.js','theme.js','file-filter.js','editor-highlight.js','health-parser.js','i18n.js')
+          $dupes = @($names | Where-Object { Test-Path "src/$_" })
+          if ($dupes.Count -gt 0) {
+            throw "UMD modules must live only under public/; duplicated in src/: $($dupes -join ', ')"
+          }
+          Write-Host "OK: no duplicated UMD modules under src/"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

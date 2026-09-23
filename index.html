@@ -2,11 +2,14 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <!-- CSP: 在 Electron 版基础上为 Tauri v2 补齐 IPC 所需源 (connect-src ipc:/http://ipc.localhost)。
-       Tauri 会把 tauri.conf.json 的 app.security.csp 与本文档 meta CSP 同时生效 (取交集)。
-       注意: 后端需把 tauri.conf.json 的 csp 与本文档保持一致 (至少 connect-src/img-src 需含
-       nimbus-preview: nimbus-doc:), 否则交集会拦掉自定义协议 fetch。详见 README-BUILD.md。 -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; font-src 'self' data:; img-src 'self' http://nimbus-preview.localhost nimbus-preview: blob: data:; connect-src 'self' ipc: http://ipc.localhost http://nimbus-preview.localhost http://nimbus-doc.localhost nimbus-preview: nimbus-doc: blob: data:; worker-src 'self' blob:; child-src 'self' blob:" />
+  <!-- CSP (唯一管理源): Tauri 会把 tauri.conf.json 的 app.security.csp 与本文档 meta CSP
+       同时生效 (取交集), 故后端保持 csp: null, 由本行统一管理, 避免交集拦掉自定义协议。
+       基线: script-src 无 unsafe-inline/unsafe-eval (inline 脚本注入无执行面);
+             style-src 保留 unsafe-inline (界面大量使用元素 style 属性与动态样式);
+             worker-src blob: 供 pdfjs worker; img/connect 放行 nimbus-preview:/nimbus-doc: 自定义协议。
+       加固: object-src 'none' (禁插件/嵌入对象执行) + base-uri 'self' (防 base 标签劫持相对路径)。
+       修改本行时请同步检查 README-BUILD.md「开发模式(CSP 注意事项)」。 -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; font-src 'self' data:; img-src 'self' http://nimbus-preview.localhost nimbus-preview: blob: data:; connect-src 'self' ipc: http://ipc.localhost http://nimbus-preview.localhost http://nimbus-doc.localhost nimbus-preview: nimbus-doc: blob: data:; worker-src 'self' blob:; child-src 'self' blob:" />
   <title>FgmSSH</title>
   <!-- xterm 官方样式: 由 src/main.js 经 import '@xterm/xterm/css/xterm.css' 引入 (vite 打包)，
        含 .xterm-viewport{position:absolute} / .xterm-screen{position:relative} 等核心定位规则;

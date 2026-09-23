@@ -1,7 +1,11 @@
 /**
  * FgmSSH - 渲染进程
  * 负责: 界面交互 / xterm 终端渲染 / 标签页管理 / IPC 桥接 / 侧边栏 SFTP 面板 / 图片预览
+ * 说明: 内置文档查看器 (PDF/DOCX/文本编辑) 已按域拆出至 ./doc-viewer.js,
+ *       由文件下方「模块装配」区创建实例 (依赖注入), 本文件仅保留调用点。
  */
+
+import { createDocViewer } from './doc-viewer.js';
 
 // ============ 全局状态 ============
 let connections = [];          // 已保存的连接配置
@@ -24,16 +28,8 @@ let sftpSearchTimer = null;      // 递归搜索防抖定时器
 let sftpSearchResultsOpen = false; // 递归结果列表是否展开
 let updateBadgePayload = null;   // Roadmap 第一梯队 ③ (S): 更新检查结果 (点击打开 releases)
 
-// 内置文档查看器状态: docTabs = docId -> doc 运行时对象; activeDocId 当前显示的文档
-let docTabs = new Map();
-let activeDocId = null;
-
-// 文档扩展名白名单 (与 main.js DOC_EXTENSIONS 保持一致; 图片走 preview, 不在此列)
-const DOC_EXTENSIONS = [
-  '.txt', '.log', '.md', '.json', '.yml', '.yaml', '.sh', '.py', '.js', '.ts',
-  '.html', '.css', '.xml', '.conf', '.ini', '.csv',
-  '.pdf', '.docx', '.doc',
-];
+// 内置文档查看器: 状态 (docTabs / activeDocId) 与全部渲染逻辑已按域拆至 src/doc-viewer.js,
+// 本文件仅保留调用点 (docViewer.openDocViewer 等), 实例在下方「模块装配」处创建。
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -317,6 +313,27 @@ function buildGpuChartOpts() {
 const fileFilterApi = (typeof window !== 'undefined' && window.FileFilter) || null;
 // Roadmap 第一梯队 ③ (M): 文本编辑增强 (语法高亮 tokenizer + 分段加载判定; 同上降级)
 const editorHighlightApi = (typeof window !== 'undefined' && window.EditorHighlight) || null;
+
+// ============ 模块装配 (内置文档查看器) ============
+// 文档查看器已按域拆至 src/doc-viewer.js, 在此注入依赖: 均为本文件已定义的实现
+// (函数声明会提升; editorHighlightApi 等 const 需延迟取值, 故以 getter 传入)。
+// 装配位置在所有 const 依赖就绪之后, 调用点均在运行时触发, 不存在时序问题。
+const docViewer = createDocViewer({
+  T,
+  escapeHtml,
+  toast,
+  genId,
+  joinRemotePath,
+  afterLayout,
+  formatSize,
+  $,
+  $$,
+  showSftpFor,
+  activateSession,
+  // 当前终端会话 id 列表 (排除连接预留的 c_ 前缀占位)
+  getTerminalSessionIds: () => [...sessions.keys()].filter((k) => !k.startsWith('c_')),
+  getEditorHighlight: () => editorHighlightApi,
+});
 
 // 渲染收藏列表 (favList 事件委托在 init 中绑定一次, 防重复绑定)
 function renderFavList() {
@@ -1009,11 +1026,9 @@ async function closeSession(sessionId) {
   try { await window.nimbus.disconnect(sessionId); } catch (e) {}
 
   // 关闭该会话关联的文档标签 (docViewer 正在显示的文档一并关闭; 会话关闭后文档无法保存/重开)
-  const relatedDocIds = [...docTabs.entries()]
-    .filter(([, doc]) => doc.sessionId === sessionId)
-    .map(([docId]) => docId);
+  const relatedDocIds = docViewer.getDocsBySession(sessionId);
   for (const docId of relatedDocIds) {
-    await closeDocTab(docId);
+    await docViewer.closeDocTab(docId);
   }
 
   // 若图片预览正展示该会话的图片, 一并关闭并清理临时文件
@@ -1031,6 +1046,14 @@ async function closeSession(sessionId) {
   // 清理 (SFTP 面板为全局实例, 无需移除 DOM)
   if (session.connId) sessions.delete(session.connId);
   sessions.delete(sessionId);
+  // 释放 xterm 实例: scrollback(默认 5000 行)/canvas/内部监听器/onData 订阅整体回收。
+  // 不 dispose 时每关闭一个标签都会整体泄漏一份实例, 长时间多会话使用内存单调上涨;
+  // dispose 后 session.term 置 null, 事件回调统一按 term 存在性守卫 (见 wireIPC onData)。
+  if (session.term) {
+    try { session.term.dispose(); } catch (e) {}
+    session.term = null;
+  }
+  session.fitAddon = null;
   session.tabEl.remove();
   session.hostEl.remove();
 
@@ -1076,7 +1099,7 @@ function setSessionError(session, message) {
 // - 文档查看器当前可见 (activeDocId + docViewer 非 none): 后台会话 ready/error 不应打断用户阅读
 // 用户主动点击标签时 tab 已带 active, 此处放行 activateSession (用户意图优先)
 function shouldSkipSessionFocus() {
-  const docViewerVisible = activeDocId && $('#docViewer').style.display !== 'none';
+  const docViewerVisible = !!docViewer.getActiveDocId() && $('#docViewer').style.display !== 'none';
   return docViewerVisible;
 }
 
@@ -1207,9 +1230,11 @@ function wireIPC() {
   window.nimbus.onHostKeyMismatch((payload) => queueHostKeyDialog(Object.assign({ mismatch: true }, payload)));
 
   // 终端数据
+  // 守卫 session.term: closeSession 会 dispose 实例并置 null, 断开瞬间仍在队列中的
+  // data 事件不应再写入 (否则 TypeError)。
   window.nimbus.onData(({ sessionId, data }) => {
     const session = sessions.get(sessionId);
-    if (session) session.term.write(data);
+    if (session && session.term) session.term.write(data);
   });
 
   // 事件
@@ -1778,7 +1803,7 @@ function showContextMenu(x, y, session, entry) {
 
   const isDir = !!entry.isDir;
   const isImage = !isDir && isImageName(entry.name);
-  const isDoc = !isDir && !isImage && !!getDocExtension(entry.name);
+  const isDoc = !isDir && !isImage && !!docViewer.getDocExtension(entry.name);
   const cdItem = menu.querySelector('.ctx-item[data-ctx="cd"]');
   const openItem = menu.querySelector('.ctx-item[data-ctx="open"]');
   const previewItem = menu.querySelector('.ctx-item[data-ctx="preview"]');
@@ -1844,7 +1869,7 @@ function onContextMenuClick(e) {
     if (entry.isDir) enterDir(session, entry.name, { syncTerminal: true });
   } else if (action === 'open') {
     // 内置文档查看器 (文档白名单类型; 图片走 preview 不进入)
-    openDocViewer(session, entry);
+    docViewer.openDocViewer(session, entry);
   } else if (action === 'preview') {
     openPreview(session.sessionId, joinRemotePath(session.currentPath, entry.name), entry.name);
   } else if (action === 'download') {
@@ -1975,9 +2000,9 @@ function onSftpSearchResultClick(e) {
     openPreview(session.sessionId, path, name);
     return;
   }
-  if (getDocExtension(name)) {
+  if (docViewer.getDocExtension(name)) {
     // 搜索结果在远端其他目录: 以完整路径打开 (openDocViewer 第三个参数为 remotePath 覆盖)
-    openDocViewer(session, { name, isDir: false }, path);
+    docViewer.openDocViewer(session, { name, isDir: false }, path);
     return;
   }
   // 普通文件: 进入所在目录 (面板切换, 不联动终端)
@@ -2327,541 +2352,6 @@ function initSftpDragDrop() {
   window.addEventListener('drop', (e) => e.preventDefault());
 }
 
-// ============ 内置文档查看器 ============
-// 打开文档 -> 主进程 sftp 下载到 DOC_DIR (nimbus-doc://) -> 文档标签 + 主区域查看器视图。
-// 渲染策略 (实测结论 2026-08-11):
-// - 方案 A (iframe + Chromium 内置 PDF viewer): 不可行 — Electron 31.7.7 (Chromium 126)
-//   内置 PDF viewer 扩展未启用 (plugins:true + file:// 顶层均实测失败)。
-// - 方案 B (pdfjs-dist 4.10.38): 可行 — 动态 import + fetch worker 源码为 blob URL
-//   (CSP worker-src blob:) + getDocument({url: nimbus-doc://...}) + canvas 渲染。
-//   注意: 不能用 v6 (依赖 Promise.try, Chromium 126 不支持), 已锁定 ^4.10.38。
-// - docx: mammoth.browser.js (经典 script 从 node_modules 加载) -> convertToHtml(arrayBuffer)。
-
-// 判断文件名扩展名是否在文档白名单内; 返回小写扩展名 (含 .) 或 ''
-function getDocExtension(name) {
-  if (typeof name !== 'string') return '';
-  const dot = name.lastIndexOf('.');
-  if (dot <= 0 || dot === name.length - 1) return '';
-  const ext = name.slice(dot).toLowerCase();
-  return DOC_EXTENSIONS.includes(ext) ? ext : '';
-}
-
-// 打开文档查看器: 下载 + 文档标签 (图片仍走 openPreview, 不进入查看器; 打开文档不额外新建终端)
-// 第三个参数 remotePathOverride: 递归搜索结果在远端其他目录时以完整路径打开 (默认当前目录拼接)
-async function openDocViewer(session, entry, remotePathOverride) {
-  const remotePath = remotePathOverride || joinRemotePath(session.currentPath, entry.name);
-  const ext = getDocExtension(entry.name);
-  if (!ext) {
-    toast(T('不支持打开该文件类型'), 'error');
-    return;
-  }
-  // 主进程内部下载到 DOC_DIR (白名单校验 + 防目录穿越; 大文件分段预览由主进程处理)
-  let res;
-  try {
-    res = await window.nimbus.docOpen(session.sessionId, remotePath);
-  } catch (err) {
-    toast(T('打开文档异常: ') + (err.message || T('未知错误')), 'error');
-    return;
-  }
-  if (!res || !res.ok) {
-    toast((res && res.error) || T('打开文档失败'), 'error');
-    return;
-  }
-  const doc = {
-    docId: genId(),
-    name: res.name,
-    remotePath,
-    sessionId: session.sessionId,
-    filename: res.filename,
-    url: res.url,
-    ext: res.ext,
-    isText: !!res.isText,
-    // Roadmap 第一梯队 ③ (M): 大文件分段加载 (主进程返回; 旧版/测试桩无这些字段时按全量处理)
-    truncated: !!res.truncated,
-    totalSize: (res && typeof res.totalSize === 'number') ? res.totalSize : 0,
-    previewText: (res && typeof res.previewText === 'string') ? res.previewText : '',
-    _text: '',          // 文本类文档当前完整内容 (编辑/高亮共用)
-    _editorMode: 'edit', // 'edit' (textarea) | 'view' (语法高亮预览)
-  };
-
-  openDocTab(doc);
-}
-
-// 创建文档标签 + 渲染内容 + 激活查看器
-function openDocTab(doc) {
-  docTabs.set(doc.docId, doc);
-  // 独立内容容器: 标签切换时复用 (PDF 保持打开, 不重复下载)
-  doc.bodyEl = document.createElement('div');
-  doc.bodyEl.className = 'doc-content';
-  const tab = document.createElement('div');
-  tab.className = 'tab doc-tab';
-  tab.id = 'doctab-' + doc.docId;
-  tab.dataset.docId = doc.docId;
-  tab.innerHTML = `
-    <span class="tab-dot"></span>
-    <span class="tab-name">📄 ${escapeHtml(doc.name)}</span>
-    <button class="tab-close" title="${T('关闭')}">
-      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-    </button>
-  `;
-  tab.addEventListener('click', (e) => {
-    if (e.target.closest('.tab-close')) return;
-    activateDocTab(doc.docId);
-  });
-  tab.querySelector('.tab-close').addEventListener('click', (e) => {
-    e.stopPropagation();
-    closeDocTab(doc.docId);
-  });
-  doc.tabEl = tab;
-  $('#tabs').appendChild(tab);
-  renderDocContent(doc);
-  activateDocTab(doc.docId);
-}
-
-// 激活文档标签: 隐藏终端视图, 显示查看器; 侧边栏 SFTP 面板跟随文档所属会话
-function activateDocTab(docId) {
-  const doc = docTabs.get(docId);
-  if (!doc) return;
-  activeDocId = docId;
-  $$('.tab').forEach((t) => t.classList.remove('active'));
-  doc.tabEl.classList.add('active');
-
-  // 主区域只显示查看器: 隐藏全部终端 host + terminalArea 容器
-  $('#terminalArea').style.display = 'none';
-  $$('.terminal-host').forEach((h) => (h.style.display = 'none'));
-  $('#docViewer').style.display = 'flex';
-  $('#emptyState').style.display = 'none';
-
-  // 标题栏: 文件名 + 保存按钮仅文本类显示 (编辑模式且非分段预览时才允许保存)
-  $('#docTitleName').textContent = doc.name;
-  updateDocTextControls(doc);
-
-  // 侧边栏保持展示文档所在目录 (复用 showSftpFor 竞态防护)
-  showSftpFor(doc.sessionId);
-
-  // 挂载该文档的内容容器 (已渲染则直接复用, PDF 保持打开状态)
-  const body = $('#docViewerBody');
-  body.innerHTML = '';
-  if (!doc.bodyEl) {
-    doc.bodyEl = document.createElement('div');
-    doc.bodyEl.className = 'doc-content';
-  }
-  body.appendChild(doc.bodyEl);
-  // PDF 切回时容器尺寸可能变化 -> 触发一次重绘 (等比适配)
-  if (doc._pdf && typeof doc._pdf.drawPage === 'function') {
-    afterLayout(() => doc._pdf.drawPage());
-  }
-}
-
-// 关闭文档标签: 清理临时文件 + PDF 资源 + 移除标签; 若正显示则激活其他标签/会话
-async function closeDocTab(docId) {
-  const doc = docTabs.get(docId);
-  if (!doc) return;
-  try { await window.nimbus.docClose(doc.filename); } catch (e) {}
-  // 操作日志 (渲染侧补充: 文档关闭主进程未记录, 属 UI 生命周期事件)
-  try { await window.nimbus.auditLog({ type: 'doc.close', target: doc.remotePath, result: 'success', session: doc.sessionId, detail: T('关闭文档 {0}', doc.name) }); } catch (e) {}
-  docTabs.delete(docId);
-  if (doc.tabEl) doc.tabEl.remove();
-  // 释放 pdfjs 文档资源 (关闭渲染器)
-  if (doc._pdf && doc._pdf.pdfDoc) {
-    try { doc._pdf.pdfDoc.destroy(); } catch (e) {}
-  }
-  if (activeDocId === docId) {
-    activeDocId = null;
-    const remainingDocs = [...docTabs.keys()];
-    if (remainingDocs.length > 0) {
-      activateDocTab(remainingDocs[remainingDocs.length - 1]);
-      return;
-    }
-    // 无文档标签 -> 隐藏查看器, 回到终端/空状态
-    $('#docViewer').style.display = 'none';
-    const remainingSessions = [...sessions.keys()].filter((k) => !k.startsWith('c_'));
-    if (remainingSessions.length > 0) {
-      activateSession(remainingSessions[remainingSessions.length - 1]);
-    } else {
-      $('#terminalArea').style.display = 'none';
-      $('#emptyState').style.display = 'flex';
-      showSftpFor(null);
-    }
-  }
-}
-
-// 渲染文档内容到 doc.bodyEl (文本 -> textarea; PDF -> pdfjs canvas; DOCX -> mammoth html)
-async function renderDocContent(doc) {
-  const el = doc.bodyEl;
-  el.innerHTML = '';
-  if (doc.isText) {
-    renderDocText(doc);
-  } else if (doc.ext === '.pdf') {
-    renderDocPdf(doc);
-  } else if (doc.ext === '.docx') {
-    renderDocDocx(doc);
-  } else if (doc.ext === '.doc') {
-    el.innerHTML = `<div class="doc-error">${T('旧版 .doc 暂不支持，请转存为 .docx 后打开')}</div>`;
-  } else {
-    el.innerHTML = `<div class="doc-error">${T('不支持打开该文件类型')}</div>`;
-  }
-}
-
-// ---------- Roadmap 第一梯队 ③ (M): 文本编辑增强 ----------
-// 文本类文档渲染:
-//   - 默认编辑模式 (textarea, 与旧版一致, 回归兼容; 保存语义不变);
-//   - 「编辑/高亮」切换: 高亮预览为只读 (语法高亮, 基于扩展名/内容启发, 零依赖);
-//   - 大文件分段: 超过阈值 (2MB) 时主进程只返回前 512KB 预览 (只读, 编辑禁用),
-//     底部显示「加载全部」按钮; 点击后主进程追加剩余字节 -> 重新 fetch 完整内容 ->
-//     恢复可编辑 (保存始终基于完整内容, 不截断文件)。
-// XSS: 高亮 HTML 先 escape 再套关键词 span (editorHighlight.highlightText), 无注入面。
-
-// 构建文本类文档的 DOM 容器 (truncate bar + 高亮 pre + textarea; 互斥显示)
-function buildDocTextEditor(doc) {
-  const el = doc.bodyEl;
-  el.innerHTML = '';
-  const wrap = document.createElement('div');
-  wrap.className = 'doc-text-wrap';
-
-  if (doc.truncated) {
-    // 大文件分段预览提示栏
-    const bar = document.createElement('div');
-    bar.className = 'doc-truncate-bar';
-    const total = doc.totalSize || 0;
-    const preview = doc.previewText ? doc.previewText.length : 0;
-    bar.innerHTML = `<span>${T('文件过大，已加载前 {0} / 共 {1}，是否加载全部？', formatSize(preview), formatSize(total))}</span>`;
-    const btn = document.createElement('button');
-    btn.className = 'btn-primary';
-    btn.textContent = T('加载全部');
-    btn.id = 'docLoadAllBtn';
-    btn.addEventListener('click', () => loadFullDoc(doc));
-    bar.appendChild(btn);
-    wrap.appendChild(bar);
-  }
-
-  const pre = document.createElement('pre');
-  pre.id = 'docHighlight';
-  wrap.appendChild(pre);
-
-  const ta = document.createElement('textarea');
-  ta.id = 'docTextArea';
-  ta.spellcheck = false;
-  wrap.appendChild(ta);
-
-  el.appendChild(wrap);
-  doc._wrap = wrap;
-}
-
-// 渲染文本类文档 (按当前模式: 编辑 textarea / 高亮 pre; 分段预览强制高亮只读)
-// 注意: 元素查询一律走 doc._wrap (bodyEl 挂载到 #docViewerBody 前也可渲染, 避免时序问题)
-function renderDocTextView(doc) {
-  const wrap = doc._wrap || doc.bodyEl;
-  const pre = wrap ? wrap.querySelector('#docHighlight') : null;
-  const ta = wrap ? wrap.querySelector('#docTextArea') : null;
-  if (!pre || !ta) return;
-  const truncated = !!doc.truncated;
-  const viewMode = truncated || doc._editorMode === 'view';
-  pre.style.display = viewMode ? '' : 'none';
-  ta.style.display = viewMode ? 'none' : '';
-  if (viewMode) {
-    // 语法高亮: 所有内容先 escape 再套关键词 span (零依赖; 超过 500KB 降级纯文本)
-    const hl = (editorHighlightApi && typeof editorHighlightApi.highlightText === 'function')
-      ? editorHighlightApi.highlightText(doc._text || '', doc.ext || '', {})
-      : { html: escapeHtml(doc._text || ''), language: null, degraded: false };
-    pre.innerHTML = hl.html;
-  } else {
-    ta.value = doc._text || '';
-  }
-  updateDocTextControls(doc);
-}
-
-// 同步文档头部控件可见性: 编辑切换按钮 (文本类显示) + 保存按钮 (编辑模式且非分段预览)
-function updateDocTextControls(doc) {
-  const toggle = $('#docEditToggle');
-  const saveBtn = $('#docSaveBtn');
-  if (!doc || !doc.isText) {
-    if (toggle) toggle.style.display = 'none';
-    if (saveBtn) saveBtn.style.display = 'none';
-    return;
-  }
-  if (toggle) {
-    toggle.style.display = '';
-    toggle.textContent = doc._editorMode === 'view' ? T('编辑') : T('高亮');
-  }
-  if (saveBtn) {
-    // 分段预览只读 (避免误保存截断文件): 仅完整加载且处于编辑模式时可保存
-    saveBtn.style.display = (!doc.truncated && doc._editorMode === 'edit') ? '' : 'none';
-  }
-}
-
-// 编辑 <-> 高亮 模式切换 (docEditToggle 点击; 分段预览时禁用编辑)
-function toggleDocEditorMode(doc) {
-  if (!doc || !doc.isText) return;
-  if (doc.truncated) {
-    toast(T('文件较大，请先点击「加载全部」后再编辑'), 'info');
-    return;
-  }
-  const wrap = doc._wrap || doc.bodyEl;
-  const ta = wrap ? wrap.querySelector('#docTextArea') : null;
-  if (doc._editorMode === 'edit') {
-    // 编辑 -> 高亮: 同步当前 textarea 内容到 backing
-    if (ta) doc._text = ta.value;
-    doc._editorMode = 'view';
-  } else {
-    // 高亮 -> 编辑: backing 内容回填 textarea
-    doc._editorMode = 'edit';
-    if (ta) ta.value = doc._text || '';
-  }
-  renderDocTextView(doc);
-}
-
-// 加载全部 (大文件分段预览): 主进程追加剩余字节 -> 重新 fetch 完整内容 -> 恢复可编辑
-async function loadFullDoc(doc) {
-  if (!doc || !doc.truncated) return;
-  let res;
-  try {
-    res = await window.nimbus.docLoadFull(doc.sessionId, doc.filename);
-  } catch (err) {
-    toast(T('加载全部失败: ') + (err.message || T('未知错误')), 'error');
-    return;
-  }
-  if (!res || !res.ok) {
-    toast((res && res.error) || T('加载全部失败'), 'error');
-    return;
-  }
-  try {
-    const fr = await fetch(doc.url);
-    if (!fr.ok) throw new Error('HTTP ' + fr.status);
-    doc._text = await fr.text();
-  } catch (err) {
-    toast(T('加载全部失败: ') + (err.message || T('未知错误')), 'error');
-    return;
-  }
-  // 完成: 标记完整加载, 移除 truncate bar, 切换编辑模式
-  doc.truncated = false;
-  doc._editorMode = 'edit';
-  renderDocTextView(doc);
-  toast(T('已加载全部内容，可编辑保存'), 'success');
-}
-
-// 文本类文档渲染入口: 大文件 -> 分段预览; 小文件 -> fetch 全量后默认编辑模式
-function renderDocText(doc) {
-  const el = doc.bodyEl;
-  el.innerHTML = '';
-  doc._text = '';
-  doc._editorMode = 'edit';
-  buildDocTextEditor(doc);
-
-  if (doc.truncated) {
-    // 分段预览: 直接使用主进程返回的前段内容 (只读, 高亮展示)
-    doc._text = doc.previewText || '';
-    renderDocTextView(doc);
-    return;
-  }
-
-  fetch(doc.url).then((res) => {
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.text();
-  }).then((text) => {
-    doc._text = text;
-    renderDocTextView(doc);
-  }).catch((err) => {
-    el.innerHTML = `<div class="doc-error">${T('加载失败: {0}', escapeHtml(err.message))}</div>`;
-  });
-}
-
-// 保存文本类文档: 经 doc:save 写流覆盖远端文件 (UTF-8)
-// 仅编辑模式且完整加载时可保存 (分段预览只读, 保存逻辑基于完整内容)
-async function saveDocText(doc) {
-  const wrap = doc && (doc._wrap || doc.bodyEl);
-  const ta = wrap ? wrap.querySelector('#docTextArea') : null;
-  if (!ta || !doc || doc.isText !== true) return;
-  if (doc.truncated) {
-    toast(T('文件较大，请先点击「加载全部」后再保存'), 'info');
-    return;
-  }
-  const res = await window.nimbus.docSave(doc.sessionId, doc.remotePath, ta.value);
-  if (res && res.ok) {
-    doc._text = ta.value;
-    toast(T('已保存 {0}', doc.name), 'success');
-  } else {
-    toast((res && res.error) || T('保存失败'), 'error');
-  }
-}
-
-// PDF: pdfjs-dist 动态 import + blob worker + canvas 渲染 (上一页/下一页/页码/缩放/适应宽度)
-async function renderDocPdf(doc) {
-  const el = doc.bodyEl;
-  el.innerHTML = `
-    <div class="pdf-toolbar">
-      <button class="icon-btn" id="pdfPrev" title="${T('上一页')}">◀</button>
-      <span class="pdf-page-label" id="pdfPageLabel">1 / 1</span>
-      <button class="icon-btn" id="pdfNext" title="${T('下一页')}">▶</button>
-      <span class="pdf-toolbar-sep"></span>
-      <button class="icon-btn" id="pdfZoomOut" title="${T('缩小')}">−</button>
-      <span class="pdf-zoom-label" id="pdfZoomLabel">100%</span>
-      <button class="icon-btn" id="pdfZoomIn" title="${T('放大')}">+</button>
-      <button class="icon-btn" id="pdfFit" title="${T('适应宽度')}">⛶</button>
-    </div>
-    <div class="pdf-stage" id="pdfStage">
-      <div class="pdf-empty">${T('正在加载 PDF...')}</div>
-    </div>`;
-  const stage = el.querySelector('#pdfStage');
-
-  try {
-    // 动态 import pdfjs: Tauri/vite 适配 —— 用包标识符代替相对 node_modules 路径
-    // (原 Electron 版为 ../node_modules/pdfjs-dist/build/pdf.min.mjs, 基于 index.html 的
-    // document.baseURI; vite 打包下相对路径不可达, 改经包解析, dev/build 均可解析)。
-    const pdfjs = await import('pdfjs-dist/build/pdf.min.mjs');
-    // blob worker: fetch worker 源码 -> Blob URL (CSP 需 worker-src blob:; 实测通过)
-    // Tauri/vite 适配: worker 源文件 URL 由 nimbus-bridge 经 vite `?url` 资产导入暴露为
-    // window.__PDFJS_WORKER_URL__ (dev/build 均为可 fetch 的同源地址), 取来转 Blob URL。
-    let workerOk = false;
-    try {
-      const workerUrl = window.__PDFJS_WORKER_URL__;
-      const wr = await fetch(workerUrl);
-      const code = await wr.text();
-      pdfjs.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
-      workerOk = true;
-    } catch (err) {
-      console.warn('[doc-pdf] worker 加载失败, 尝试无 worker 直连:', err);
-      // 兜底: 直接指向资产 URL, 由 pdfjs 自行尝试加载 (部分环境可工作)
-      pdfjs.GlobalWorkerOptions.workerSrc = window.__PDFJS_WORKER_URL__;
-      workerOk = true;
-    }
-    const pdfDoc = await pdfjs.getDocument({ url: doc.url }).promise;
-
-    // 渲染状态: 页码/缩放/画布
-    const state = {
-      pdfDoc,
-      page: 1,
-      zoom: 100,           // 百分比 (fit 宽度时由容器计算)
-      fitWidth: true,      // 默认适应宽度
-    };
-    state.drawPage = () => drawPdfPage(doc, state, stage);
-    doc._pdf = state;
-
-    const prevBtn = el.querySelector('#pdfPrev');
-    const nextBtn = el.querySelector('#pdfNext');
-    const pageLabel = el.querySelector('#pdfPageLabel');
-    const zoomOutBtn = el.querySelector('#pdfZoomOut');
-    const zoomInBtn = el.querySelector('#pdfZoomIn');
-    const zoomLabel = el.querySelector('#pdfZoomLabel');
-    const fitBtn = el.querySelector('#pdfFit');
-
-    const updateNav = () => {
-      pageLabel.textContent = `${state.page} / ${state.pdfDoc.numPages}`;
-      prevBtn.classList.toggle('disabled', state.page <= 1);
-      nextBtn.classList.toggle('disabled', state.page >= state.pdfDoc.numPages);
-      zoomLabel.textContent = state.zoom + '%';
-    };
-    prevBtn.addEventListener('click', () => {
-      if (state.page > 1) { state.page--; state.fitWidth = false; state.drawPage(); updateNav(); }
-    });
-    nextBtn.addEventListener('click', () => {
-      if (state.page < state.pdfDoc.numPages) { state.page++; state.fitWidth = false; state.drawPage(); updateNav(); }
-    });
-    zoomOutBtn.addEventListener('click', () => {
-      state.zoom = Math.max(25, state.zoom - 25);
-      state.fitWidth = false;
-      state.drawPage(); updateNav();
-    });
-    zoomInBtn.addEventListener('click', () => {
-      state.zoom = Math.min(400, state.zoom + 25);
-      state.fitWidth = false;
-      state.drawPage(); updateNav();
-    });
-    fitBtn.addEventListener('click', () => {
-      state.fitWidth = true;
-      state.drawPage(); updateNav();
-    });
-    stage.addEventListener('wheel', (e) => {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      if (e.deltaY < 0) zoomInBtn.click(); else zoomOutBtn.click();
-    }, { passive: false });
-
-    // 首次绘制 (等容器布局稳定)
-    afterLayout(() => { state.drawPage(); updateNav(); });
-  } catch (err) {
-    stage.innerHTML = `<div class="doc-error">${T('PDF 加载失败: {0}', escapeHtml(err.message))}</div>`;
-  }
-}
-
-// 绘制 PDF 当前页 (适应宽度: 按 stage 宽度等比; 手动缩放: 按百分比)
-function drawPdfPage(doc, state, stage) {
-  if (!state || !state.pdfDoc) return;
-  const page = state.pdfDoc.getPage(state.page);
-  page.then((pdfPage) => {
-    // 清理旧 canvas
-    const old = stage.querySelector('canvas');
-    if (old) old.remove();
-    const baseViewport = pdfPage.getViewport({ scale: 1 });
-    let scale;
-    if (state.fitWidth) {
-      const avail = Math.max(80, stage.clientWidth - 32);
-      scale = avail / baseViewport.width;
-      state.zoom = Math.round(scale * 100);
-      const zoomLabel = stage.parentElement.querySelector('#pdfZoomLabel');
-      if (zoomLabel) zoomLabel.textContent = state.zoom + '%';
-    } else {
-      scale = state.zoom / 100;
-    }
-    const viewport = pdfPage.getViewport({ scale });
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.floor(viewport.width);
-    canvas.height = Math.floor(viewport.height);
-    stage.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-    pdfPage.render({ canvasContext: ctx, viewport }).promise.catch((err) => {
-      console.warn('[doc-pdf] 渲染页失败:', err);
-    });
-  }).catch((err) => {
-    console.warn('[doc-pdf] 取页失败:', err);
-  });
-}
-
-// 轻量 HTML 净化 (mammoth DOCX 输出用, P3): 防止文档内嵌恶意内容在查看器内执行。
-// 处理: 剥离 <script> 标签(含内容)、所有 on\w+= 事件属性、javascript: URL、
-//       非图片 data: URL (src/href)、<iframe>/<object>/<embed> 危险嵌入标签。
-// 放行 data:image/*: DOCX 内嵌图片以 src="data:image/png;base64,..." 形式出现, 属正常功能;
-//                   <img> 加载图片数据不执行脚本, 无 XSS 风险 (CSP 第二层防线兜底)。
-// 局限: 正则净化不保证覆盖全部 XSS 向量 (编码混淆/嵌套变体等), 应用 CSP 已是第二层防线,
-//       本函数仅作纵深防御; 若需更强保证应引入 DOMPurify 等成熟库。
-function sanitizeHtml(html) {
-  if (typeof html !== 'string' || html.length === 0) return '';
-  let out = html;
-  // 1) 剥离 <script>...</script> (含内容, 大小写不敏感, 允许跨行)
-  out = out.replace(/<script[\s\S]*?<\/script\s*>/gi, '');
-  // 2) 剥离危险嵌入标签 <iframe>/<object>/<embed> (含开闭标签; 残留文本无执行能力)
-  out = out.replace(/<\/?(?:iframe|object|embed)\b[^>]*>/gi, '');
-  // 3) 剥离所有事件处理属性 on\w+= (onclick/onerror/onload 等, 单/双引号或裸值)
-  out = out.replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-  // 4a) 剥离 src/href 属性中 javascript: 协议 URL (单/双引号或裸值, 大小写不敏感)
-  out = out.replace(
-    /\s(?:src|href)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]+)/gi,
-    ''
-  );
-  // 4b) 剥离 src/href 属性中非图片 data: URL (保留 data:image/* 供 DOCX 内嵌图使用;
-  //     (?!image\/) 负向前瞻: 大小写不敏感, 单/双引号或裸值)
-  out = out.replace(
-    /\s(?:src|href)\s*=\s*(?:"data:(?!image\/)[^"]*"|'data:(?!image\/)[^']*'|data:(?!image\/)[^\s>]+)/gi,
-    ''
-  );
-  return out;
-}
-
-// DOCX: mammoth 外部 script -> convertToHtml(arrayBuffer) -> 净化后注入只读 HTML
-async function renderDocDocx(doc) {
-  const el = doc.bodyEl;
-  el.innerHTML = `<div class="docx-loading"><div class="overlay-spinner"></div><span>${T('正在解析 DOCX...')}</span></div>`;
-  try {
-    const res = await fetch(doc.url);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const buf = await res.arrayBuffer();
-    const result = await window.mammoth.convertToHtml({ arrayBuffer: buf });
-    el.innerHTML = `<div class="docx-content">${sanitizeHtml(result.value || '')}</div>`;
-  } catch (err) {
-    el.innerHTML = `<div class="doc-error">${T('DOCX 解析失败: {0}', escapeHtml(err.message))}</div>`;
-  }
-}
-
 // ============ 可调节布局 (侧边栏宽度 + 表格列宽) ============
 // 三列布局: 名称 (加宽承接操作列释放的宽度) / 大小 / 修改时间
 const COL_DEFAULTS = { name: 200, size: 62, mtime: 108 };
@@ -2886,6 +2376,18 @@ function applyColWidths(widths) {
       col.style.width = widths[key] + 'px';
     }
   });
+}
+
+// 窄栏密度: 侧边栏宽度不足时隐藏「修改时间」列 (class 由 CSS 消费)。
+// 三列默认宽 200+62+108=370px, 大于侧边栏默认宽 320px (最小可拖到 280px),
+// 窄栏下 table-layout:fixed 会按比例压缩各列, mtime 列被压到显示不全
+// (时间戳截断成无意义文本); 此时隐藏该列, 把宽度让给「名称」和「大小」。
+const SIDEBAR_NARROW_PX = 400; // 阈值: 370px 列宽 + 内边距/滚动条余量
+function applySidebarDensity() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+  const w = sidebar.getBoundingClientRect().width;
+  if (w > 0) sidebar.classList.toggle('is-narrow', w < SIDEBAR_NARROW_PX);
 }
 
 // 侧边栏宽度拖拽: pointer 事件 + setPointerCapture, clamp 280~560px
@@ -2922,6 +2424,8 @@ function initSidebarResizer() {
     resizer.classList.remove('active');
     document.body.classList.remove('is-resizing');
     localStorage.setItem('nimbus.sidebarWidth', String(sidebar.getBoundingClientRect().width));
+    // 窄栏密度: 拖到 400px 以下隐藏「修改时间」列 (拖宽则恢复显示)
+    applySidebarDensity();
     // 拖拽结束: 从缓存重绘当前文件列表, 确保列宽/省略号按新容器重排
     const s = currentSftpSession();
     if (s && s.fileEntries) renderFileList(s, s.fileEntries);
@@ -4482,6 +3986,8 @@ async function init() {
   if (savedSidebarW >= 280 && savedSidebarW <= 560) {
     document.querySelector('.sidebar').style.width = savedSidebarW + 'px';
   }
+  // 窄栏密度: 首屏即按当前宽度决定是否隐藏「修改时间」列 (默认 320px -> 隐藏)
+  applySidebarDensity();
   initSidebarResizer();
   initColResizers();
 
@@ -4493,15 +3999,15 @@ async function init() {
 
   // 文档查看器事件: 保存 (文本类) + 高亮/编辑切换 + 关闭按钮
   $('#docSaveBtn').addEventListener('click', () => {
-    const doc = activeDocId ? docTabs.get(activeDocId) : null;
-    if (doc && doc.isText) saveDocText(doc);
+    const doc = docViewer.getActiveDoc();
+    if (doc && doc.isText) docViewer.saveDocText(doc);
   });
   $('#docEditToggle').addEventListener('click', () => {
-    const doc = activeDocId ? docTabs.get(activeDocId) : null;
-    if (doc) toggleDocEditorMode(doc);
+    const doc = docViewer.getActiveDoc();
+    if (doc) docViewer.toggleDocEditorMode(doc);
   });
   $('#docCloseBtn').addEventListener('click', () => {
-    if (activeDocId) closeDocTab(activeDocId);
+    if (docViewer.getActiveDocId()) docViewer.closeDocTab(docViewer.getActiveDocId());
   });
 
   // 操作日志面板
@@ -4551,11 +4057,11 @@ async function init() {
       openModal();
     }
     // 文档查看器激活且可见时: Ctrl+S 保存文本类文档
-    // 守卫: 切到终端标签后 activeDocId 可能残留, 仅查看器可见时拦截保存 (防误存隐藏文档)
-    if (activeDocId && $('#docViewer').style.display !== 'none' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    // 守卫: 切到终端标签后当前文档 id 可能残留, 仅查看器可见时拦截保存 (防误存隐藏文档)
+    if (docViewer.getActiveDocId() && $('#docViewer').style.display !== 'none' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      const doc = docTabs.get(activeDocId);
-      if (doc && doc.isText) saveDocText(doc);
+      const doc = docViewer.getActiveDoc();
+      if (doc && doc.isText) docViewer.saveDocText(doc);
       return;
     }
     // 图片预览打开时: ← → 切换上一张/下一张 (仅预览模态显示时生效, 不影响终端/其他界面)

@@ -10,11 +10,13 @@ fmgssh-tauri/
 ├── package.json              # @tauri-apps/api + @xterm/xterm + pdfjs-dist + mammoth + vite
 ├── vite.config.js
 ├── index.html                # 复用 fmgssh-review/src/index.html，加载 nimbus-bridge.js
-├── src/                      # 前端（从 fmgssh-review/src/ 复制并适配）
-│   ├── renderer.js           # 原样复用（仅移除 window.nimbus 依赖的 preload 差异）
-│   ├── style.css / theme.js / health-parser.js / editor-highlight.js / file-filter.js / fav-commands.js
+├── src/                      # 前端
+│   ├── renderer.js           # 界面逻辑主文件（文档查看器已按域拆出）
+│   ├── doc-viewer.js         # 内置文档查看器（PDF/DOCX/文本编辑，依赖由 renderer 注入）
 │   ├── nimbus-bridge.js      # ★ 新增：window.nimbus.* → @tauri-apps/api 桥接层（核心）
-│   └── vendor/               # xterm/pdfjs/mammoth 的 npm 引入
+│   └── style.css             # 唯一样式表
+├── public/                   # 7 个 UMD 纯逻辑模块（经典 script 加载；源码唯一位置，勿在 src/ 下复制）
+│   └── fav-commands / i18n / gpu-chart / theme / file-filter / editor-highlight / health-parser
 ├── src-tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json       # productName=FgmSSH, identifier=com.fgm.ssh

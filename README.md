@@ -7,7 +7,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)]()
 [![Build & Release](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml/badge.svg)](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml)
 
-> **当前版本：v1.2.14**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
+> **当前版本：v1.2.15**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
 
 ## 特性
 
@@ -69,6 +69,15 @@ npm run tauri build    # 生产构建（产物在 src-tauri/target/release/bundl
 ## 已知限制
 
 - **端口转发**：目前仅支持本地转发（本地端口 → 远端服务），暂无 SOCKS5 动态转发
+
+## v1.2.15 更新内容
+
+- **修复终端内存泄漏**：关闭标签时未销毁 xterm 实例（scrollback / canvas / 内部监听器 / 数据订阅整体泄漏），长时间多会话使用内存持续上涨；现在会话关闭会正确释放实例，并加固断开瞬间的数据事件守卫
+- **修复主题模块未生效**：`theme.js` 曾同时存在于 `src/` 与 `public/` 且已分叉，页面实际加载的是硬编码中文旧版，导致主题按钮文案未走 i18n。现统一为单一源（`public/`，7 个 UMD 模块同样处理），并在 CI 增加重复副本校验防止回归
+- **修复 SFTP 窄栏显示**：侧边栏宽度小于 400px 时自动隐藏「修改时间」列（三列固定宽 370px，窄栏下时间戳会被压缩到无法辨认），拖宽侧边栏即恢复
+- **字号统一为整数阶梯**：清理 11.5 / 12.5 / 12.8 / 13.5px 等分数像素值（Windows 125% / 150% 缩放下会被取整渲染而发糊），收敛为 12 / 13 / 14px 三档并在样式表头部记录规范
+- **CSP 加固**：新增 `object-src 'none'`（禁插件/嵌入对象执行）与 `base-uri 'self'`（防 base 标签劫持），保持由 `index.html` 单一管理
+- **代码结构**：内置文档查看器（PDF / DOCX / 文本编辑）从 `renderer.js` 按域拆出为独立模块 `src/doc-viewer.js`
 
 ## v1.2.14 更新内容
 

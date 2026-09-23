@@ -168,12 +168,17 @@
       const resolved = currentTheme();
       const prefLabel = THEME_LABELS[pref] || THEME_LABELS.auto;
       const resolvedLabel = THEME_LABELS[resolved] || THEME_LABELS.dark;
+      // 文案国际化: renderer 通过 window.__t 暴露 T(); 未提供时原样返回中文
+      const tr = (typeof window !== 'undefined' && typeof window.__t === 'function')
+        ? window.__t
+        : (s) => s;
       button.dataset.theme = pref;
-      button.title = '主题模式: ' + prefLabel + '（当前 ' + resolvedLabel + '），点击切换';
+      button.title = tr('主题模式: {0}（当前 {1}）', prefLabel, resolvedLabel);
       const iconEl = button.querySelector ? button.querySelector('.theme-state-icon') : null;
       const labelEl = button.querySelector ? button.querySelector('.theme-state-label') : null;
+      // 图标改用内联 SVG 三态 (CSS 按 data-theme 显示), 仅在旧标记存在时回退文本图标
       if (iconEl) iconEl.textContent = THEME_ICONS[pref] || THEME_ICONS.auto;
-      if (labelEl) labelEl.textContent = '主题';
+      if (labelEl) labelEl.textContent = tr('主题');
     }
 
     // 应用主题: 设置 data-theme + 同步 xterm + 回调; 返回实际生效主题
