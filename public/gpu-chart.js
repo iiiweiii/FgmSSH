@@ -146,7 +146,7 @@
     };
 
     if (arr.length === 0) {
-      return '<div class="gpu-chart-empty">等待采样数据... (开启自动刷新后每 5 秒采集一次)</div>';
+      return '<div class="gpu-chart-empty">等待采样数据... (每 5 秒采集一次)</div>';
     }
 
     const toY = (v) => plotBottom - (plotH * clamp(toNum(v) === null ? 0 : toNum(v), 0, maxY)) / maxY;

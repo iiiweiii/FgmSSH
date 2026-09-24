@@ -7,7 +7,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)]()
 [![Build & Release](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml/badge.svg)](https://github.com/iiiweiii/FgmSSH/actions/workflows/build.yml)
 
-> **当前版本：v1.2.15**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
+> **当前版本：v1.2.16**。推送 `v*` tag 会触发 GitHub Actions 自动构建并上传 Release 草稿，核验后再公开发布。
 
 ## 特性
 
@@ -69,6 +69,12 @@ npm run tauri build    # 生产构建（产物在 src-tauri/target/release/bundl
 ## 已知限制
 
 - **端口转发**：目前仅支持本地转发（本地端口 → 远端服务），暂无 SOCKS5 动态转发
+
+## v1.2.16 更新内容
+
+- **修复健康监控不会自动刷新**：自动刷新开关存在「自我抵消」逻辑缺陷——处理函数入口先重置勾选状态、再依据该状态判断是否启动，导致刷新定时器永远不会被创建。该问题自 Tauri v2 重构起即存在，自动刷新从未真正生效，GPU 利用率折线也因此始终只有一个采样点、不随时间变化。现改为打开面板即自动按 5 秒持续刷新
+- **精简监控面板操作**：移除「自动刷新」复选框与「刷新」按钮。指标仅在面板打开期间采集，关闭面板即停止，无需手动干预
+- **文案与词条清理**：同步更新空态提示（原文案「开启自动刷新后…」已无对应操作），并清理随之失效的中英词条
 
 ## v1.2.15 更新内容
 

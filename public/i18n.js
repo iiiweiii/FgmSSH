@@ -337,11 +337,9 @@
 
     // ===== 健康监控面板 =====
     '正在采集服务器指标...': 'Collecting server metrics...',
-    '自动刷新': 'Auto-refresh',
-    '每 5 秒自动刷新 (避免频繁建立 SSH exec 通道)': 'Auto-refresh every 5s (avoids frequent SSH exec channels)',
     '数据来源: 当前活动会话 (uptime / free / df / top / hostname / nvidia-smi)': 'Source: active session (uptime / free / df / top / hostname / nvidia-smi)',
     '请先连接 SSH 会话, 再查看服务器健康指标。': 'Connect an SSH session first to view server metrics.',
-    '等待采样数据... (开启自动刷新后每 5 秒采集一次)': 'Waiting for samples... (collected every 5s with auto-refresh on)',
+    '等待采样数据... (每 5 秒采集一次)': 'Waiting for samples... (collected every 5s)',
     '无法获取': 'Unavailable',
     'CPU 使用率': 'CPU usage',
     '内存': 'Memory',

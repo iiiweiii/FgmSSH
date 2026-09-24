@@ -3346,11 +3346,11 @@ async function deleteTunnelItem(localPort) {
 // ============ 服务器健康监控面板 ============
 // 与隧道面板同构: 展示当前活动会话服务器的 基本信息/GPU/CPU/内存/磁盘/负载。
 // 数据来源: window.nimbus.monitorFetch (主进程 exec + node 端解析为结构化 JSON),
-// 渲染层只负责卡片渲染。默认手动刷新; 「自动刷新」开关每 5s 静默刷新一次。
+// 渲染层只负责卡片渲染。打开面板即启动 5s 静默刷新, 持续刷新至关闭面板 (无手动干预)。
 let monitorPanelSessionId = null; // 面板当前展示的会话 (打开时锁定为活动会话)
 let monitorAutoTimer = null;      // 自动刷新定时器句柄
 // GPU 折线滚动窗口 (60×5s = 5 分钟): 由 src/gpu-chart.js 纯模块创建, 每次刷新成功
-// push 一点 (自动/手动刷新共用, 跟随 5s 自动刷新开关, 无独立定时器), 超出上限自动裁剪。
+// push 一点 (跟随 5s 定时刷新, 无独立定时器), 超出上限自动裁剪。
 let monitorGpuHistory = (typeof window !== 'undefined' && window.GpuChart)
   ? window.GpuChart.createGpuHistory({ max: 60 })
   : null;
@@ -3382,7 +3382,9 @@ function openMonitorPanel() {
   if (hint) hint.textContent = `${s.name} (${s.config.username}@${s.config.host}:${s.config.port})`;
   // 重新打开面板时重置 GPU 折线窗口 (避免展示过期/稀疏采样)
   if (monitorGpuHistory) monitorGpuHistory.clear();
+  // 打开面板即自动刷新: 立即采集一次 -> 启动 5s 静默刷新定时器 (无开关可关)。
   refreshMonitor();
+  startMonitorAutoTimer();
 }
 
 function closeMonitorPanel() {
@@ -3391,34 +3393,27 @@ function closeMonitorPanel() {
   stopMonitorAutoRefresh();
 }
 
-// 停止自动刷新 (关闭面板 / 取消勾选时调用; 幂等)
+// 自动刷新定时器间隔: 5s (避免频繁建立 SSH exec 通道)。
+const MONITOR_AUTO_INTERVAL_MS = 5000;
+
+// 停止自动刷新 (关闭面板 / 会话失效 / 面板不可见时调用; 幂等, 仅清定时器)。
 function stopMonitorAutoRefresh() {
   if (monitorAutoTimer) {
     clearInterval(monitorAutoTimer);
     monitorAutoTimer = null;
   }
-  const toggle = $('#monitorAutoToggle');
-  if (toggle) toggle.checked = false;
 }
 
-// 自动刷新开关: 勾选后每 5s 静默刷新 (面板关闭/会话失效自动停止)
-function toggleMonitorAutoRefresh() {
-  const toggle = $('#monitorAutoToggle');
-  if (!toggle) return;
+// 启动 5s 静默刷新定时器 (调用前需确认面板可见且有会话)。
+function startMonitorAutoTimer() {
   stopMonitorAutoRefresh();
-  if (!toggle.checked) return;
-  if (!monitorPanelSessionId) {
-    toggle.checked = false;
-    toast(T('请先连接会话'), 'info');
-    return;
-  }
   monitorAutoTimer = setInterval(() => {
     if (!$('#monitorOverlay') || $('#monitorOverlay').style.display !== 'flex') {
       stopMonitorAutoRefresh();
       return;
     }
     refreshMonitor(true); // 静默刷新: 不弹 toast, 不闪 loading
-  }, 5000);
+  }, MONITOR_AUTO_INTERVAL_MS);
 }
 
 // 刷新监控数据: silent=true 时静默刷新 (自动刷新用), 失败仅展示错误文案不弹 toast
@@ -3539,7 +3534,7 @@ function renderMonitorCards(res, grid) {
     const svg = (gpuChartLib && monitorGpuHistory) ? gpuChartLib.buildGpuChartSvg(monitorGpuHistory.points, buildGpuChartOpts()) : '';
     const chartHtml = svg
       ? `<div class="monitor-gpu-chart">${svg}</div>`
-      : `<div class="monitor-na">${T('等待采样数据... (开启自动刷新后每 5 秒采集一次)')}</div>`;
+      : `<div class="monitor-na">${T('等待采样数据... (每 5 秒采集一次)')}</div>`;
     const nowHtml = `
       <div class="monitor-gpu-now">
         <span class="monitor-gpu-chip"><b>${T('利用率')}</b>${fmtNum(g.util, 1)}%</span>
@@ -4033,8 +4028,6 @@ async function init() {
   // 服务器健康监控面板
   $('#btnMonitor').addEventListener('click', openMonitorPanel);
   $('#monitorCloseBtn').addEventListener('click', closeMonitorPanel);
-  $('#monitorRefreshBtn').addEventListener('click', () => refreshMonitor(false));
-  $('#monitorAutoToggle').addEventListener('change', toggleMonitorAutoRefresh);
   $('#monitorOverlay').addEventListener('click', (e) => {
     if (e.target === $('#monitorOverlay')) closeMonitorPanel();
   });

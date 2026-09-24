@@ -580,17 +580,13 @@
   <!-- ============ 服务器健康监控面板 (Roadmap: 健康监控, P2) ============
        与隧道面板同构: modal-overlay + modal 弹窗; 针对当前活动会话的服务器
        采集 CPU/内存/磁盘/负载/基本信息, 主进程 exec + 解析为结构化 JSON,
-       渲染层只负责卡片渲染。默认手动刷新, 可选 5s 自动刷新。 -->
+       渲染层只负责卡片渲染。打开面板即自动刷新 (5s), 持续刷新, 无手动干预。 -->
   <div class="modal-overlay monitor-overlay" id="monitorOverlay" style="display:none;">
     <div class="modal monitor-modal">
       <div class="modal-header monitor-header">
         <h3>健康监控</h3>
         <div class="monitor-header-actions">
           <span class="monitor-session-hint" id="monitorSessionHint"></span>
-          <label class="monitor-auto-toggle" title="每 5 秒自动刷新 (避免频繁建立 SSH exec 通道)">
-            <input type="checkbox" id="monitorAutoToggle" /> 自动刷新
-          </label>
-          <button class="btn-ghost audit-btn" id="monitorRefreshBtn">刷新</button>
           <button class="icon-btn modal-close" id="monitorCloseBtn" title="关闭 (Esc)">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>

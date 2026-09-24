@@ -1571,17 +1571,6 @@ body.terminal-fullscreen .terminal-host { padding: 0 8px; }
   white-space: nowrap;
   user-select: text;
 }
-.monitor-auto-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--text-dim);
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-.monitor-auto-toggle input { accent-color: var(--accent); cursor: pointer; }
 .monitor-body {
   padding: 6px 20px 12px;
   max-height: 62vh;
